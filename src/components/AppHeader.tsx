@@ -9,6 +9,7 @@ const links = [
   { href: "/employees", label: "Employees" },
   { href: "/team", label: "Team" },
   { href: "/years", label: "Years" },
+  { href: "/budgets", label: "Budgets" },
 ];
 
 export function AppHeader() {

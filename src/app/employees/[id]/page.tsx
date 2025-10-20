@@ -54,8 +54,8 @@ export default function EmployeeDetailPage() {
 
   const months = fiscalMonths();
 
-  // Display map for logged/billed as H:MM strings
-  const [display, setDisplay] = useState<Record<number, { logged: string; billed: string }>>({});
+  // Display map for worked (decimal as string), and logged/billed (H:MM strings)
+  const [display, setDisplay] = useState<Record<number, { worked: string; logged: string; billed: string }>>({});
 
   // Edit mode: month-by-month or yearly totals
   const [editMode, setEditMode] = useState<"month" | "year">("month");
@@ -211,9 +211,10 @@ export default function EmployeeDetailPage() {
       setEntries(full);
       // Initialize display map from numeric values
       setDisplay((prev) => {
-        const next: Record<number, { logged: string; billed: string }> = { ...prev };
+        const next: Record<number, { worked: string; logged: string; billed: string }> = { ...prev };
         for (const e of full) {
           next[e.month_index] = {
+            worked: String(Number(e.worked || 0)),
             logged: decimalToHM(Number(e.logged || 0)),
             billed: decimalToHM(Number(e.billed || 0)),
           };
@@ -239,15 +240,15 @@ export default function EmployeeDetailPage() {
     if (!yearId || !employeeId) return;
     setSaving(true);
     try {
-      // Upsert all entries
+      // Upsert all entries. For new rows (no id), provide a generated UUID to satisfy NOT NULL id on some DBs.
       const payload = entries.map((e) => ({
-        ...(e.id ? { id: e.id } : {}),
+        id: e.id ?? (typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : undefined),
         employee_id: e.employee_id,
         fiscal_year_id: e.fiscal_year_id,
         month_index: e.month_index,
-        worked: e.worked,
-        logged: e.logged,
-        billed: e.billed,
+        worked: Number.isFinite(e.worked) ? e.worked : 0,
+        logged: Number.isFinite(e.logged) ? e.logged : 0,
+        billed: Number.isFinite(e.billed) ? e.billed : 0,
       }));
       const { data, error } = await supabaseBrowser
         .from("month_entries")
@@ -311,9 +312,10 @@ export default function EmployeeDetailPage() {
       }))
     );
     setDisplay((prev) => {
-      const next: Record<number, { logged: string; billed: string }> = { ...prev };
+      const next: Record<number, { worked: string; logged: string; billed: string }> = { ...prev };
       for (const m of months) {
         next[m.index] = {
+          worked: String(Math.round(perWorked * 100) / 100),
           logged: decimalToHM(perLogged),
           billed: decimalToHM(perBilled),
         };
@@ -467,7 +469,7 @@ export default function EmployeeDetailPage() {
               return (
                 <div key={m.index} className="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
                   <div className="flex items-center justify-between">
-                    <p className="font-medium">{m.label}</p>
+                    <p className="font-medium text-black">{m.label}</p>
                     <p className="text-xs text-slate-500">{loggedPct}% logged • {billedPct}% billed</p>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-end">
@@ -476,8 +478,17 @@ export default function EmployeeDetailPage() {
                       <Input
                         id={`w-${m.index}`}
                         inputMode="decimal"
-                        value={String(e.worked ?? 0)}
-                        onChange={(ev) => updateEntry(m.index, { worked: toNumber(ev.target.value) })}
+                        value={display[m.index]?.worked ?? String(e.worked ?? 0)}
+                        onChange={(ev) => {
+                          const val = ev.target.value;
+                          setDisplay((d) => ({ ...d, [m.index]: { ...(d[m.index] || { logged: decimalToHM(Number(e.logged||0)), billed: decimalToHM(Number(e.billed||0)) }), worked: val } }));
+                          const dec = parseHoursInput(val);
+                          updateEntry(m.index, { worked: dec });
+                        }}
+                        onBlur={() => {
+                          const dec = Number(entries.find(x => x.month_index === m.index)?.worked || 0);
+                          setDisplay((d) => ({ ...d, [m.index]: { ...(d[m.index] || { logged: decimalToHM(Number(e.logged||0)), billed: decimalToHM(Number(e.billed||0)) }), worked: String(Math.round(dec * 100) / 100) } }));
+                        }}
                       />
                     </div>
                     <div>
@@ -488,13 +499,33 @@ export default function EmployeeDetailPage() {
                         value={display[m.index]?.logged ?? decimalToHM(Number(e.logged || 0))}
                         onChange={(ev) => {
                           const val = ev.target.value;
-                          setDisplay((d) => ({ ...d, [m.index]: { ...(d[m.index] || { billed: decimalToHM(Number(e.billed||0)) }), logged: val } }));
+                          setDisplay((d) => ({
+                            ...d,
+                            [m.index]: {
+                              ...(d[m.index] || {
+                                worked: String(Number(e.worked || 0)),
+                                logged: decimalToHM(Number(e.logged || 0)),
+                                billed: decimalToHM(Number(e.billed || 0)),
+                              }),
+                              logged: val,
+                            },
+                          }));
                           const dec = parseHoursInput(val);
                           updateEntry(m.index, { logged: dec });
                         }}
                         onBlur={() => {
                           const dec = Number(entries.find(x => x.month_index === m.index)?.logged || 0);
-                          setDisplay((d) => ({ ...d, [m.index]: { ...(d[m.index] || { billed: decimalToHM(Number(e.billed||0)) }), logged: decimalToHM(dec) } }));
+                          setDisplay((d) => ({
+                            ...d,
+                            [m.index]: {
+                              ...(d[m.index] || {
+                                worked: String(Number(e.worked || 0)),
+                                logged: decimalToHM(Number(e.logged || 0)),
+                                billed: decimalToHM(Number(e.billed || 0)),
+                              }),
+                              logged: decimalToHM(dec),
+                            },
+                          }));
                         }}
                       />
                     </div>
@@ -506,13 +537,33 @@ export default function EmployeeDetailPage() {
                         value={display[m.index]?.billed ?? decimalToHM(Number(e.billed || 0))}
                         onChange={(ev) => {
                           const val = ev.target.value;
-                          setDisplay((d) => ({ ...d, [m.index]: { ...(d[m.index] || { logged: decimalToHM(Number(e.logged||0)) }), billed: val } }));
+                          setDisplay((d) => ({
+                            ...d,
+                            [m.index]: {
+                              ...(d[m.index] || {
+                                worked: String(Number(e.worked || 0)),
+                                logged: decimalToHM(Number(e.logged || 0)),
+                                billed: decimalToHM(Number(e.billed || 0)),
+                              }),
+                              billed: val,
+                            },
+                          }));
                           const dec = parseHoursInput(val);
                           updateEntry(m.index, { billed: dec });
                         }}
                         onBlur={() => {
                           const dec = Number(entries.find(x => x.month_index === m.index)?.billed || 0);
-                          setDisplay((d) => ({ ...d, [m.index]: { ...(d[m.index] || { logged: decimalToHM(Number(e.logged||0)) }), billed: decimalToHM(dec) } }));
+                          setDisplay((d) => ({
+                            ...d,
+                            [m.index]: {
+                              ...(d[m.index] || {
+                                worked: String(Number(e.worked || 0)),
+                                logged: decimalToHM(Number(e.logged || 0)),
+                                billed: decimalToHM(Number(e.billed || 0)),
+                              }),
+                              billed: decimalToHM(dec),
+                            },
+                          }));
                         }}
                       />
                     </div>

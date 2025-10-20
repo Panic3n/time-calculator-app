@@ -47,7 +47,14 @@ export async function POST(req: NextRequest) {
     let amountPresent = 0;
     let amountGt0 = 0;
 
-    for (const ev of events.slice(0, limit)) {
+    // Aggregations for Logged exclusion analysis
+    const freqBreak: Record<string, { count: number; hours: number }> = {};
+    const freqCharge: Record<string, { count: number; hours: number }> = {};
+    let holidayIdCount = 0;
+    let holidayIdHours = 0;
+    let totalHours = 0;
+
+    for (const ev of events) {
       total++;
       Object.keys(ev || {}).forEach((k) => keysSet.add(k));
       if (sample.length < 5) sample.push(ev);
@@ -58,6 +65,22 @@ export async function POST(req: NextRequest) {
       if (Number.isFinite(rate) && rate > 0) rateGt0 += 1;
       if (!Number.isNaN(amt)) amountPresent += 1;
       if (Number.isFinite(amt) && amt > 0) amountGt0 += 1;
+
+      const hours = Number(pick<any>(ev, ["timeTakenHours", "rawTime", "raw_time", "timeTaken", "time_taken", "timetaken"]) ?? 0) || 0;
+      totalHours += hours;
+      const btype = `${pick<any>(ev, ["break_type", "breakType"]) ?? ""}`.trim().toLowerCase();
+      const ctype = `${pick<any>(ev, ["charge_type_name", "chargeTypeName"]) ?? ""}`.trim().toLowerCase();
+      const holidayId = Number(pick<any>(ev, ["holiday_id", "holidayId"])) || 0;
+      if (btype) {
+        const fb = (freqBreak[btype] ||= { count: 0, hours: 0 });
+        fb.count += 1; fb.hours += hours;
+      }
+      if (ctype) {
+        const fc = (freqCharge[ctype] ||= { count: 0, hours: 0 });
+        fc.count += 1; fc.hours += hours;
+      }
+      if (holidayId > 0) { holidayIdCount += 1; holidayIdHours += hours; }
+      if (total >= limit) break;
     }
 
     return NextResponse.json({
@@ -71,7 +94,13 @@ export async function POST(req: NextRequest) {
         rate_gt0_rows: rateGt0,
         amount_present_rows: amountPresent,
         amount_gt0_rows: amountGt0,
+        total_rows: total,
+        total_hours: Math.round(totalHours * 100) / 100,
+        holiday_id_rows: holidayIdCount,
+        holiday_id_hours: Math.round(holidayIdHours * 100) / 100,
       },
+      break_types: Object.entries(freqBreak).map(([name, v]) => ({ name, count: v.count, hours: Math.round(v.hours * 100) / 100 })).sort((a,b)=>b.hours-a.hours).slice(0,50),
+      charge_types: Object.entries(freqCharge).map(([name, v]) => ({ name, count: v.count, hours: Math.round(v.hours * 100) / 100 })).sort((a,b)=>b.hours-a.hours).slice(0,50),
       sample,
     }, { status: 200 });
   } catch (e: any) {

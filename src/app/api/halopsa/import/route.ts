@@ -107,6 +107,11 @@ export async function POST(req: NextRequest) {
 
     // Load billable charge type allowlist from Supabase if present
     let billableTypeSet: Set<string> | null = null;
+    // Load excluded-from-logged charge types from Supabase if present
+    let excludedLoggedSet: Set<string> | null = null;
+    // Load break types and holiday types to exclude from Logged
+    let excludedBreakTypes: Set<string> | null = null;
+    let excludedHolidayTypes: Set<string> | null = null;
     try {
       const { data: billableCfg, error: billableErr } = await supabaseBrowser
         .from("halo_billable_charge_types")
@@ -118,11 +123,43 @@ export async function POST(req: NextRequest) {
             .filter(Boolean)
         );
       }
+      const { data: excludedCfg, error: exclErr } = await supabaseBrowser
+        .from("halo_excluded_logged_types")
+        .select("name");
+      if (!exclErr && Array.isArray(excludedCfg)) {
+        excludedLoggedSet = new Set(
+          (excludedCfg as any[])
+            .map((r) => `${(r as any).name ?? ""}`.trim().toLowerCase())
+            .filter(Boolean)
+        );
+      }
+      const { data: breakCfg, error: breakErr } = await supabaseBrowser
+        .from("halo_excluded_break_types")
+        .select("name");
+      if (!breakErr && Array.isArray(breakCfg)) {
+        excludedBreakTypes = new Set(
+          (breakCfg as any[])
+            .map((r) => `${(r as any).name ?? ""}`.trim().toLowerCase())
+            .filter(Boolean)
+        );
+      }
+      const { data: holCfg, error: holErr } = await supabaseBrowser
+        .from("halo_excluded_holiday_types")
+        .select("name");
+      if (!holErr && Array.isArray(holCfg)) {
+        excludedHolidayTypes = new Set(
+          (holCfg as any[])
+            .map((r) => `${(r as any).name ?? ""}`.trim().toLowerCase())
+            .filter(Boolean)
+        );
+      }
     } catch {}
 
     // 4) Aggregate per agent + fiscal month (Logged from TimesheetEvent, Billed by charge_type_name)
     type Totals = { logged: number; billed: number };
     const agg: Record<string, Totals> = {};
+    // per-charge-type billed aggregation
+    const aggTypes: Record<string, number> = {};
     let readRows = 0;
     for (const ev of events) {
       readRows++;
@@ -173,13 +210,50 @@ export async function POST(req: NextRequest) {
         "int pre-sale",
       ]);
       const billableTypes = billableTypeSet ?? defaultBillableTypes;
-      const ct = `${pick<any>(ev, ["charge_type_name", "chargeTypeName"]) ?? ""}`.trim().toLowerCase();
+      const rawCt = `${pick<any>(ev, ["charge_type_name", "chargeTypeName"]) ?? ""}`.trim();
+      const ct = rawCt.toLowerCase();
       const isBillable = billableTypes.has(ct);
       const billable = raw > 0 && isBillable ? raw : 0;
 
+      // Logged exclusion for non-working types (holiday/vacation/break)
+      const defaultExcludedLogged = new Set(["holiday", "vacation", "break"]);
+      const defaultBreaks = new Set([
+        "taking a breather",
+        "lunch break",
+        "non-working hours",
+      ]);
+      const defaultHolidays = new Set([
+        "vacation",
+        "dentist appointment",
+        "doctors appointment",
+        "vab",
+        "permission",
+        "parental leave",
+        "leave of absence",
+        "withdraw time (stored compensation)",
+      ]);
+      const breakTypeRaw = pick<any>(ev, ["break_type", "breakType"]);
+      const breakType = `${breakTypeRaw ?? ""}`.trim().toLowerCase();
+      const holidayId = pick<any>(ev, ["holiday_id", "holidayId"]);
+
+      const isExcludedByCharge = (excludedLoggedSet ?? defaultExcludedLogged).has(ct);
+      const breakTypeNum = Number(breakTypeRaw);
+      const isExcludedByBreak = (Number.isFinite(breakTypeNum) && breakTypeNum > 0)
+        || (!!breakType && (excludedBreakTypes ?? defaultBreaks).has(breakType));
+      const holidayIdNum = Number(holidayId);
+      const isExcludedByHolidayId = Number.isFinite(holidayIdNum) && holidayIdNum > 0;
+      const excluded = isExcludedByCharge || isExcludedByBreak || isExcludedByHolidayId;
+      const loggedAdd = raw > 0 && !excluded ? raw : 0;
+
       const cur = (agg[key] ||= { logged: 0, billed: 0 });
-      cur.logged += Number.isFinite(raw) ? raw : 0;
+      cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
+
+      // Per charge type aggregation (store name lowercased for normalization)
+      if (billable > 0 && ct) {
+        const tkey = `${empId}:${idx}:${ct}`;
+        aggTypes[tkey] = (aggTypes[tkey] || 0) + billable;
+      }
     }
 
     // 5) Upsert into month_entries
@@ -218,11 +292,32 @@ export async function POST(req: NextRequest) {
       .upsert(payload, { onConflict: "employee_id,fiscal_year_id,month_index" });
     if (upErr) throw upErr;
 
+    // 6) Upsert per-charge-type billed hours into month_entries_billed_types
+    const typeKeys = Object.keys(aggTypes);
+    if (typeKeys.length) {
+      const payloadTypes = typeKeys.map((tk) => {
+        const [empId, idxStr, ct] = tk.split(":");
+        const idx = Number(idxStr);
+        return {
+          employee_id: empId,
+          fiscal_year_id: fiscalYearId,
+          month_index: idx,
+          charge_type_name: ct, // stored lowercased
+          hours: Math.round((aggTypes[tk] || 0) * 100) / 100,
+        };
+      });
+      const { error: upErrTypes } = await supabaseBrowser
+        .from("month_entries_billed_types")
+        .upsert(payloadTypes, { onConflict: "employee_id,fiscal_year_id,month_index,charge_type_name" });
+      if (upErrTypes) throw upErrTypes;
+    }
+
     return NextResponse.json(
       {
         ok: true,
         readRows,
         importedRows: payload.length,
+        importedBilledTypeRows: typeKeys ? typeKeys.length : 0,
         fiscalYearId,
         from: query.start_date,
         to: query.end_date,

@@ -16,6 +16,7 @@ import {
   ResponsiveContainer,
   CartesianGrid,
   Legend,
+  ReferenceLine,
 } from "recharts";
 
 type Employee = { id: string; name: string; role: string | null };
@@ -44,6 +45,7 @@ export default function TeamPage() {
   const [entriesCompare, setEntriesCompare] = useState<MonthEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selected, setSelected] = useState<Record<string, boolean>>({}); // employee_id -> included
 
   // CSV import state
   const [showImport, setShowImport] = useState(false);
@@ -116,6 +118,10 @@ export default function TeamPage() {
         setYears(fys as any);
         const preferred = (fys as any[])[0]?.id as string | undefined;
         if (preferred) setYearId(preferred);
+        // initialize selection (all included)
+        const initSel: Record<string, boolean> = {};
+        (emps as any[]).forEach((e) => { initSel[(e as any).id] = true; });
+        setSelected(initSel);
       } catch (e: any) {
         setError(e?.message ?? "Failed to load team data");
       } finally {
@@ -363,19 +369,20 @@ export default function TeamPage() {
     const available = Number(fy?.available_hours ?? 0);
     const byEmp: Record<string, { worked: number; logged: number; billed: number }> = {};
     for (const e of entries) {
+      if (!selected[e.employee_id]) continue;
       const b = (byEmp[e.employee_id] ||= { worked: 0, logged: 0, billed: 0 });
       b.worked += Number(e.worked || 0);
       b.logged += Number(e.logged || 0);
       b.billed += Number(e.billed || 0);
     }
-    return employees.map((emp) => {
+    return employees.filter(emp => selected[emp.id]).map((emp) => {
       const agg = byEmp[emp.id] || { worked: 0, logged: 0, billed: 0 };
       const pctLogged = agg.worked ? Math.round((agg.logged / agg.worked) * 1000) / 10 : 0;
       const pctBilled = agg.worked ? Math.round((agg.billed / agg.worked) * 1000) / 10 : 0;
       const attendancePct = available > 0 ? Math.round((agg.worked / available) * 1000) / 10 : 0;
       return { id: emp.id, name: emp.name, role: emp.role, worked: agg.worked, logged: agg.logged, billed: agg.billed, pctLogged, pctBilled, attendancePct };
     });
-  }, [employees, entries, years, yearId]);
+  }, [employees, entries, years, yearId, selected]);
 
   const teamAverages = useMemo(() => {
     if (rows.length === 0) return { pctLogged: 0, pctBilled: 0, attendancePct: 0 };
@@ -395,14 +402,14 @@ export default function TeamPage() {
   const monthlyChartData = useMemo(() => {
     const months = fiscalMonths();
     return months.map((m) => {
-      const monthRowsA = entries.filter(e => e.month_index === m.index);
+      const monthRowsA = entries.filter(e => e.month_index === m.index && selected[e.employee_id]);
       const sumWorkedA = monthRowsA.reduce((acc, e) => acc + Number(e.worked || 0), 0);
       const sumLoggedA = monthRowsA.reduce((acc, e) => acc + Number(e.logged || 0), 0);
       const sumBilledA = monthRowsA.reduce((acc, e) => acc + Number(e.billed || 0), 0);
       const loggedPctA = sumWorkedA ? Math.round((sumLoggedA / sumWorkedA) * 1000) / 10 : 0;
       const billedPctA = sumWorkedA ? Math.round((sumBilledA / sumWorkedA) * 1000) / 10 : 0;
 
-      const monthRowsB = entriesCompare.filter(e => e.month_index === m.index);
+      const monthRowsB = entriesCompare.filter(e => e.month_index === m.index && selected[e.employee_id]);
       const sumWorkedB = monthRowsB.reduce((acc, e) => acc + Number(e.worked || 0), 0);
       const sumLoggedB = monthRowsB.reduce((acc, e) => acc + Number(e.logged || 0), 0);
       const sumBilledB = monthRowsB.reduce((acc, e) => acc + Number(e.billed || 0), 0);
@@ -419,7 +426,7 @@ export default function TeamPage() {
         billedPctDelta: Math.round((billedPctA - billedPctB) * 10) / 10,
       };
     });
-  }, [entries, entriesCompare]);
+  }, [entries, entriesCompare, selected]);
 
   const exportCsv = () => {
     const fyLabel = years.find((y) => y.id === yearId)?.label || "";
@@ -546,6 +553,9 @@ export default function TeamPage() {
                     <Legend />
                     <Line type="monotone" dataKey="loggedPct" stroke="#7ef9ff" strokeWidth={2} dot={false} name="% Logged" />
                     <Line type="monotone" dataKey="billedPct" stroke="#afff5f" strokeWidth={2} dot={false} name="% Billed" />
+                    {/* Horizontal team average lines over selected employees */}
+                    <ReferenceLine y={teamAverages.pctLogged} stroke="#7ef9ff" strokeDasharray="4 4" ifOverflow="extendDomain" label={{ value: `% Logged avg ${teamAverages.pctLogged}%`, fill: '#7ef9ff', position: 'right' }} />
+                    <ReferenceLine y={teamAverages.pctBilled} stroke="#afff5f" strokeDasharray="4 4" ifOverflow="extendDomain" label={{ value: `% Billed avg ${teamAverages.pctBilled}%`, fill: '#afff5f', position: 'right' }} />
                     {compareYearId ? (
                       <>
                         <Line type="monotone" dataKey="loggedPctCompare" stroke="#ff9dff" strokeWidth={2} dot={false} name="% Logged (Compare)" />
@@ -593,9 +603,34 @@ export default function TeamPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Team Metrics</CardTitle>
-                <CardDescription>Yearly totals and percentages per employee</CardDescription>
+                <CardDescription>Yearly totals and percentages per employee. Use the checkboxes to include/exclude employees in charts and averages.</CardDescription>
               </CardHeader>
               <CardContent>
+                {/* Employee selection controls */}
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <Button variant="outline" onClick={() => {
+                    const all: Record<string, boolean> = {};
+                    employees.forEach((e) => { all[e.id] = true; });
+                    setSelected(all);
+                  }}>Select all</Button>
+                  <Button variant="outline" onClick={() => {
+                    const none: Record<string, boolean> = {};
+                    employees.forEach((e) => { none[e.id] = false; });
+                    setSelected(none);
+                  }}>Select none</Button>
+                </div>
+                <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-52 overflow-auto p-2 border border-[var(--color-surface)] rounded">
+                  {employees.map((e) => (
+                    <label key={e.id} className="flex items-center gap-2 text-sm">
+                      <input
+                        type="checkbox"
+                        checked={!!selected[e.id]}
+                        onChange={(ev) => setSelected((s) => ({ ...s, [e.id]: ev.target.checked }))}
+                      />
+                      <span>{e.name}</span>
+                    </label>
+                  ))}
+                </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
