@@ -27,37 +27,41 @@ export default function BudgetsPage() {
   const [busySave, setBusySave] = useState(false);
 
   const [employees, setEmployees] = useState<Employee[]>([]);
-  const [selected, setSelected] = useState<Record<string, boolean>>({}); // employee include map
-  const [billedEntries, setBilledEntries] = useState<{ employee_id: string; billed: number; worked: number }[]>([]);
+  const [includedMap, setIncludedMap] = useState<Record<string, boolean>>({}); // from team_included_employees
+  const [billedEntries, setBilledEntries] = useState<{ employee_id: string; billed: number; worked: number; logged: number }[]>([]);
   // Per charge type rows for billed
   const [billedTypeRows, setBilledTypeRows] = useState<{ employee_id: string; charge_type_name: string; hours: number }[]>([]);
   // Available billable charge types and selection map
   const [chargeTypes, setChargeTypes] = useState<string[]>([]);
-  const [selectedTypes, setSelectedTypes] = useState<Record<string, boolean>>({});
+  const [includedTypes, setIncludedTypes] = useState<Record<string, boolean>>({}); // from included_charge_types
   const billedHoursTotal = useMemo(() => {
     return Math.round(
-      billedEntries.filter(e => selected[e.employee_id]).reduce((acc, r) => acc + Number(r.billed || 0), 0) * 100
+      billedEntries.filter(e => includedMap[e.employee_id]).reduce((acc, r) => acc + Number(r.billed || 0), 0) * 100
     ) / 100;
-  }, [billedEntries, selected]);
+  }, [billedEntries, includedMap]);
   const billedHoursFromTypes = useMemo(() => {
     if (!billedTypeRows.length) return 0;
     // Sum hours for selected employees and selected charge types
-    const allowed = selectedTypes;
     const sum = billedTypeRows.reduce((acc, r) => {
-      if (!selected[r.employee_id]) return acc;
+      if (!includedMap[r.employee_id]) return acc;
       const ct = r.charge_type_name?.toLowerCase?.() || '';
-      if (!ct || allowed[ct] !== true) return acc;
+      if (!ct || !includedTypes[ct]) return acc;
       return acc + Number(r.hours || 0);
     }, 0);
     return Math.round(sum * 100) / 100;
-  }, [billedTypeRows, selected, selectedTypes]);
-  // Effective billed hours (prefer per-type aggregation when available)
-  const billedHours = billedHoursFromTypes > 0 ? billedHoursFromTypes : billedHoursTotal;
+  }, [billedTypeRows, includedMap, includedTypes]);
+  // Effective billed hours
+  // Requirement: If no rows in included_charge_types for FY => none allowed => 0 billed.
+  // If rows exist, use per-type aggregation only.
+  const billedHours = useMemo(() => {
+    const hasTypes = Object.keys(includedTypes).length > 0;
+    return hasTypes ? billedHoursFromTypes : 0;
+  }, [includedTypes, billedHoursFromTypes]);
   const workedHours = useMemo(() => {
     return Math.round(
-      billedEntries.filter(e => selected[e.employee_id]).reduce((acc, r) => acc + Number(r.worked || 0), 0) * 100
+      billedEntries.filter(e => includedMap[e.employee_id]).reduce((acc, r) => acc + Number(r.worked || 0), 0) * 100
     ) / 100;
-  }, [billedEntries, selected]);
+  }, [billedEntries, includedMap]);
   const pctBilled = useMemo(() => {
     if (!workedHours) return 0;
     return Math.round(((billedHours / workedHours) * 100) * 10) / 10;
@@ -83,9 +87,17 @@ export default function BudgetsPage() {
           .order("name");
         if (eErr) throw eErr;
         setEmployees(emps as any);
-        const selInit: Record<string, boolean> = {};
-        (emps as any[]).forEach((e) => { selInit[(e as any).id] = true; });
-        setSelected(selInit);
+        // load included employees for preferred billed FY
+        const fy = (data as any[])[0]?.id as string | undefined;
+        if (fy) {
+          try {
+            const resp = await fetch(`/api/admin/team-included?fiscal_year_id=${fy}`, { cache: "no-store" });
+            const json = await resp.json();
+            const map: Record<string, boolean> = {};
+            (json?.rows || []).forEach((r: any) => { map[String(r.employee_id)] = true; });
+            setIncludedMap(map);
+          } catch {}
+        }
       } catch (e: any) {
         setError(e?.message || "Failed to load fiscal years");
       } finally {
@@ -117,39 +129,40 @@ export default function BudgetsPage() {
     load();
   }, [yearId]);
 
-  // Load billable charge types once
+  // Load charge types available (union) and included for billed FY
   useEffect(() => {
     const loadTypes = async () => {
       try {
-        const { data, error } = await supabaseBrowser
-          .from("halo_billable_charge_types")
-          .select("name")
-          .order("name", { ascending: true });
-        if (!error) {
-          const names = ((data as any[]) || []).map(r => String((r as any).name || '').toLowerCase()).filter(Boolean);
-          setChargeTypes(names);
-          // If selection is empty, default to all
-          setSelectedTypes((prev) => {
-            if (Object.keys(prev).length) return prev;
-            const all: Record<string, boolean> = {};
-            names.forEach(n => all[n] = true);
-            return all;
-          });
-        }
+        const [{ data: base }, { data: rows }] = await Promise.all([
+          supabaseBrowser.from("halo_billable_charge_types").select("name").order("name", { ascending: true }),
+          supabaseBrowser.from("included_charge_types").select("charge_type_name").eq("fiscal_year_id", billedYearId),
+        ]);
+        const names = ((base as any[]) || []).map(r => String((r as any).name || '').toLowerCase()).filter(Boolean);
+        setChargeTypes(names);
+        const inc: Record<string, boolean> = {};
+        ((rows as any[]) || []).forEach(r => { inc[String((r as any).charge_type_name || '').toLowerCase()] = true; });
+        setIncludedTypes(inc);
       } catch {}
     };
-    loadTypes();
-  }, []);
+    if (billedYearId) loadTypes(); else { setChargeTypes([]); setIncludedTypes({}); }
+  }, [billedYearId]);
 
-  // Load billed + worked entries when billed FY changes
+  // Load billed + worked + logged entries when billed FY changes, and included employees map
   useEffect(() => {
     const loadBilled = async () => {
       if (!billedYearId) { setBilledEntries([]); return; }
       const { data, error } = await supabaseBrowser
         .from("month_entries")
-        .select("employee_id, billed, worked")
+        .select("employee_id, billed, worked, logged")
         .eq("fiscal_year_id", billedYearId);
-      if (!error) setBilledEntries(((data as any[]) || []).map(r => ({ employee_id: r.employee_id, billed: Number(r.billed||0), worked: Number(r.worked||0) })));
+      if (!error) setBilledEntries(((data as any[]) || []).map(r => ({ employee_id: r.employee_id, billed: Number(r.billed||0), worked: Number(r.worked||0), logged: Number(r.logged||0) })));
+      try {
+        const resp = await fetch(`/api/admin/team-included?fiscal_year_id=${billedYearId}`, { cache: "no-store" });
+        const json = await resp.json();
+        const map: Record<string, boolean> = {};
+        (json?.rows || []).forEach((r: any) => { map[String(r.employee_id)] = true; });
+        setIncludedMap(map);
+      } catch {}
     };
     loadBilled();
   }, [billedYearId]);
@@ -251,29 +264,7 @@ export default function BudgetsPage() {
             <CardDescription>Store the department's teckningsbidrag for the selected fiscal year.</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            {/* Employee selection for billed total */}
-            <div>
-              <div className="mb-2 flex gap-2">
-                <Button variant="outline" onClick={() => {
-                  const all: Record<string, boolean> = {};
-                  employees.forEach((e) => { all[e.id] = true; });
-                  setSelected(all);
-                }}>Select all</Button>
-                <Button variant="outline" onClick={() => {
-                  const none: Record<string, boolean> = {};
-                  employees.forEach((e) => { none[e.id] = false; });
-                  setSelected(none);
-                }}>Select none</Button>
-              </div>
-              <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-40 overflow-auto p-2 border border-[var(--color-surface)] rounded">
-                {employees.map((e) => (
-                  <label key={e.id} className="flex items-center gap-2 text-sm">
-                    <input type="checkbox" checked={!!selected[e.id]} onChange={(ev) => setSelected((s) => ({ ...s, [e.id]: ev.target.checked }))} />
-                    <span>{e.name}</span>
-                  </label>
-                ))}
-              </div>
-            </div>
+            {/* Employee inclusion is managed in Admin. Using DB selections for billed calculations. */}
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
               <div>
                 <label className="text-sm block mb-1">Teckningsbidrag (SEK)</label>
@@ -292,7 +283,7 @@ export default function BudgetsPage() {
                 <Input value={avgBilledRate.toFixed(2)} readOnly />
               </div>
             </div>
-            {/* Charge type filters */}
+            {/* Charge types included are managed in Admin and applied from DB; none => none allowed */}
             <div className="space-y-2">
               <label className="text-sm block">Included billable charge types</label>
               <div className="flex flex-wrap gap-3 p-3 border rounded-md">
@@ -300,15 +291,7 @@ export default function BudgetsPage() {
                   <span className="text-sm text-gray-500">No charge types found</span>
                 )}
                 {chargeTypes.map((ct) => (
-                  <label key={ct} className="inline-flex items-center gap-2 text-sm">
-                    <input
-                      type="checkbox"
-                      className="h-4 w-4"
-                      checked={!!selectedTypes[ct]}
-                      onChange={(e) => setSelectedTypes((prev) => ({ ...prev, [ct]: e.target.checked }))}
-                    />
-                    <span>{ct}</span>
-                  </label>
+                  <span key={ct} className={includedTypes[ct] ? "text-sm" : "text-sm opacity-50"}>{ct}</span>
                 ))}
               </div>
             </div>

@@ -45,7 +45,7 @@ export default function TeamPage() {
   const [entriesCompare, setEntriesCompare] = useState<MonthEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selected, setSelected] = useState<Record<string, boolean>>({}); // employee_id -> included
+  const [selected, setSelected] = useState<Record<string, boolean>>({}); // employee_id -> included (from DB)
 
   // CSV import state
   const [showImport, setShowImport] = useState(false);
@@ -118,10 +118,6 @@ export default function TeamPage() {
         setYears(fys as any);
         const preferred = (fys as any[])[0]?.id as string | undefined;
         if (preferred) setYearId(preferred);
-        // initialize selection (all included)
-        const initSel: Record<string, boolean> = {};
-        (emps as any[]).forEach((e) => { initSel[(e as any).id] = true; });
-        setSelected(initSel);
       } catch (e: any) {
         setError(e?.message ?? "Failed to load team data");
       } finally {
@@ -130,6 +126,21 @@ export default function TeamPage() {
     };
     load();
   }, []);
+
+  // Load inclusion map from DB for selected FY
+  useEffect(() => {
+    const loadIncluded = async () => {
+      if (!yearId) { setSelected({}); return; }
+      try {
+        const resp = await fetch(`/api/admin/team-included?fiscal_year_id=${yearId}`, { cache: "no-store" });
+        const json = await resp.json();
+        const map: Record<string, boolean> = {};
+        (json?.rows || []).forEach((r: any) => { map[String(r.employee_id)] = true; });
+        setSelected(map);
+      } catch {}
+    };
+    loadIncluded();
+  }, [yearId]);
 
   // CSV helpers moved to component scope
   function parseCsvFile(file: File) {
@@ -606,31 +617,7 @@ export default function TeamPage() {
                 <CardDescription>Yearly totals and percentages per employee. Use the checkboxes to include/exclude employees in charts and averages.</CardDescription>
               </CardHeader>
               <CardContent>
-                {/* Employee selection controls */}
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  <Button variant="outline" onClick={() => {
-                    const all: Record<string, boolean> = {};
-                    employees.forEach((e) => { all[e.id] = true; });
-                    setSelected(all);
-                  }}>Select all</Button>
-                  <Button variant="outline" onClick={() => {
-                    const none: Record<string, boolean> = {};
-                    employees.forEach((e) => { none[e.id] = false; });
-                    setSelected(none);
-                  }}>Select none</Button>
-                </div>
-                <div className="mb-4 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2 max-h-52 overflow-auto p-2 border border-[var(--color-surface)] rounded">
-                  {employees.map((e) => (
-                    <label key={e.id} className="flex items-center gap-2 text-sm">
-                      <input
-                        type="checkbox"
-                        checked={!!selected[e.id]}
-                        onChange={(ev) => setSelected((s) => ({ ...s, [e.id]: ev.target.checked }))}
-                      />
-                      <span>{e.name}</span>
-                    </label>
-                  ))}
-                </div>
+                {/* Employee inclusion is managed in Admin and applied read-only here */}
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>

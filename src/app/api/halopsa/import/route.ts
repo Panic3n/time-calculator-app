@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { haloFetch, fiscalMonthIndex } from "@/lib/halo";
 import { supabaseBrowser } from "@/lib/supabaseClient";
+import { randomUUID } from "crypto";
 
 type FY = { id: string; label: string; start_date?: string; end_date?: string };
 
 function deriveFyWindow(fy: FY) {
   if (fy.start_date && fy.end_date) return { start: fy.start_date, end: fy.end_date };
-  // Derive from label "YYYY/YYYY+1": start Sep 1, end Aug 31
+  // Derive from label "YYYY/YYYY+1": start Sep 1, endAug 31
   const [a, b] = (fy.label || "").split("/").map(Number);
   const start = new Date(Date.UTC(a, 8, 1)).toISOString().slice(0, 10);
   const end = new Date(Date.UTC(b, 7, 31)).toISOString().slice(0, 10);
@@ -276,15 +277,17 @@ export async function POST(req: NextRequest) {
       const idx = Number(idxStr);
       const totals = agg[k];
       const ex = exMap[k];
-      return {
-        ...(ex?.id ? { id: ex.id } : {}),
+      const base: any = {
+        id: ex?.id ?? randomUUID(),
         employee_id: empId,
         fiscal_year_id: fiscalYearId,
         month_index: idx,
-        worked: Number(ex?.worked || 0),
         logged: Math.round(totals.logged * 100) / 100,
         billed: Math.round(totals.billed * 100) / 100,
       };
+      // Only set 'worked' for new rows; preserve existing worked by omitting the field
+      if (!ex) base.worked = 0;
+      return base;
     });
 
     const { error: upErr } = await supabaseBrowser
