@@ -15,42 +15,58 @@ async function getToken(): Promise<HaloToken> {
     client_secret: clientSecret,
     scope,
   });
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
-    body,
-    cache: 'no-store',
-  });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Halo token failed (${res.status}): ${t}`);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', Accept: 'application/json' },
+      body,
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`Halo token failed (${res.status}): ${t}`);
+    }
+    return (await res.json()) as HaloToken;
+  } catch (err) {
+    console.error('Token fetch error:', err);
+    throw err;
   }
-  return (await res.json()) as HaloToken;
 }
 
 export async function haloFetch(path: string, init?: RequestInit & { query?: Record<string, string | number | boolean | undefined> }) {
   const apiBase = process.env.HALO_API_BASE;
   if (!apiBase) throw new Error('Missing HALO_API_BASE');
-  const token = await getToken();
-  const q = new URLSearchParams();
-  if (init?.query) {
-    for (const [k, v] of Object.entries(init.query)) {
-      if (v !== undefined && v !== null) q.set(k, String(v));
+  try {
+    const token = await getToken();
+    const q = new URLSearchParams();
+    if (init?.query) {
+      for (const [k, v] of Object.entries(init.query)) {
+        if (v !== undefined && v !== null) q.set(k, String(v));
+      }
     }
+    const url = `${apiBase.replace(/\/$/, '')}/${path.replace(/^\/$/, '')}${q.toString() ? `?${q.toString()}` : ''}`;
+    console.log('Fetching from Halo:', url);
+    const headers: Record<string, string> = {
+      Authorization: `${token.token_type || 'Bearer'} ${token.access_token}`,
+      Accept: 'application/json',
+    };
+    // Some tenants require an explicit tenant header
+    if (process.env.HALO_TENANT) headers['X-Halo-Tenant'] = process.env.HALO_TENANT;
+    const res = await fetch(url, { ...(init || {}), headers: { ...headers, ...(init?.headers as any) }, cache: 'no-store' });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`Halo fetch ${path} failed (${res.status}): ${t}`);
+    }
+    try {
+      return await res.json();
+    } catch (err) {
+      console.error('Halo fetch JSON parse error for path:', path, err);
+      throw err;
+    }
+  } catch (err) {
+    console.error('Halo fetch error for path:', path, err);
+    throw err;
   }
-  const url = `${apiBase.replace(/\/$/, '')}/${path.replace(/^\//, '')}${q.toString() ? `?${q.toString()}` : ''}`;
-  const headers: Record<string, string> = {
-    Authorization: `${token.token_type || 'Bearer'} ${token.access_token}`,
-    Accept: 'application/json',
-  };
-  // Some tenants require an explicit tenant header
-  if (process.env.HALO_TENANT) headers['X-Halo-Tenant'] = process.env.HALO_TENANT;
-  const res = await fetch(url, { ...(init || {}), headers: { ...headers, ...(init?.headers as any) }, cache: 'no-store' });
-  if (!res.ok) {
-    const t = await res.text();
-    throw new Error(`Halo fetch ${path} failed (${res.status}): ${t}`);
-  }
-  return res.json();
 }
 
 export function fiscalMonthIndex(dateISO: string) {

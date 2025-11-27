@@ -8,16 +8,19 @@ import { supabaseBrowser } from "@/lib/supabaseClient";
 
 const baseLinks = [
   { href: "/", label: "Home" },
-  { href: "/employees", label: "Employees" },
+  { href: "/dashboard", label: "Dashboard" },
   { href: "/team", label: "Team" },
-  { href: "/years", label: "Years" },
-  { href: "/budgets", label: "Budgets" },
+  { href: "/team-goals", label: "Team goals" },
+];
+
+const employeeLinks = [
+  { href: "/dashboard", label: "Dashboard" },
+  { href: "/team-goals", label: "Team goals" },
 ];
 
 export function AppHeader() {
   const pathname = usePathname();
   const router = useRouter();
-  const [badge, setBadge] = useState<{ label: string; value: string } | null>(null);
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [email, setEmail] = useState<string>("");
 
@@ -38,36 +41,8 @@ export function AppHeader() {
         } else {
           setIsAdmin(false);
         }
-
-        // Latest fiscal year
-        const { data: fys } = await supabaseBrowser
-          .from("fiscal_years")
-          .select("id, label")
-          .order("start_date", { ascending: false })
-          .limit(1);
-        const fy = (fys as any[])?.[0];
-        if (!fy?.id) { setBadge(null); return; }
-        const fyId = fy.id as string;
-        // Included employees
-        const resp = await fetch(`/api/admin/team-included?fiscal_year_id=${fyId}`, { cache: "no-store" });
-        const json = await resp.json();
-        const includedIds: string[] = (json?.rows || []).map((r: any) => String(r.employee_id));
-        if (!includedIds.length) { setBadge({ label: fy.label, value: "--%" }); return; }
-        // Sum month_entries
-        const { data: rows } = await supabaseBrowser
-          .from("month_entries")
-          .select("employee_id, worked, billed")
-          .eq("fiscal_year_id", fyId)
-          .in("employee_id", includedIds);
-        const sum = (rows as any[] || []).reduce((acc, r) => {
-          acc.worked += Number(r.worked || 0);
-          acc.billed += Number(r.billed || 0);
-          return acc;
-        }, { worked: 0, billed: 0 });
-        const pct = sum.worked ? Math.round(((sum.billed / sum.worked) * 100) * 10) / 10 : 0;
-        setBadge({ label: fy.label as string, value: `${pct}%` });
       } catch {
-        setBadge(null);
+        setIsAdmin(false);
       }
     };
     load();
@@ -81,23 +56,44 @@ export function AppHeader() {
           <span className="font-semibold">Time Calculator</span>
         </div>
         <nav className="flex items-center gap-1">
-          {[...baseLinks, ...(isAdmin ? [{ href: "/admin", label: "Admin" }] : [])].map((l) => (
-            <Button
-              key={l.href}
-              variant={pathname === l.href ? "default" : "ghost"}
-              className={clsx("h-8 px-3", pathname === l.href ? "" : "text-[var(--color-text)]/80")}
-              onClick={() => router.push(l.href)}
-            >
-              {l.label}
-            </Button>
-          ))}
+          {email ? (
+            isAdmin ? (
+              [...baseLinks, { href: "/admin", label: "Admin" }].map((l) => (
+                <Button
+                  key={l.href}
+                  variant={pathname === l.href ? "default" : "ghost"}
+                  className={clsx("h-8 px-3", pathname === l.href ? "" : "text-[var(--color-text)]/80")}
+                  onClick={() => router.push(l.href)}
+                >
+                  {l.label}
+                </Button>
+              ))
+            ) : (
+              employeeLinks.map((l) => (
+                <Button
+                  key={l.href}
+                  variant={pathname === l.href ? "default" : "ghost"}
+                  className={clsx("h-8 px-3", pathname === l.href ? "" : "text-[var(--color-text)]/80")}
+                  onClick={() => router.push(l.href)}
+                >
+                  {l.label}
+                </Button>
+              ))
+            )
+          ) : (
+            baseLinks.map((l) => (
+              <Button
+                key={l.href}
+                variant={pathname === l.href ? "default" : "ghost"}
+                className={clsx("h-8 px-3", pathname === l.href ? "" : "text-[var(--color-text)]/80")}
+                onClick={() => router.push(l.href)}
+              >
+                {l.label}
+              </Button>
+            ))
+          )}
         </nav>
         <div className="flex items-center gap-2">
-          {badge && (
-            <span className="text-xs px-2 py-1 rounded-full border border-[var(--color-surface)] text-[var(--color-text)]/90">
-              Team billed % {badge.value} <span className="opacity-60">({badge.label})</span>
-            </span>
-          )}
           <div className="flex items-center gap-2">
             {email ? (
               <>

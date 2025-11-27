@@ -112,94 +112,15 @@ export default function EmployeesPage() {
     }
   };
 
+  // This index page is deprecated; employee cards are opened directly from Admin.
+  // Redirect to /admin so users manage employees from the CMS.
+  useEffect(() => {
+    router.push("/admin");
+  }, [router]);
+
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <h1 className="text-xl font-semibold mb-2">Employees</h1>
-        <Card>
-          <CardHeader>
-            <CardTitle>Add Employee</CardTitle>
-            <CardDescription>Add a new employee (name and optional role)</CardDescription>
-          </CardHeader>
-          <form onSubmit={handleSubmit(onAdd)} noValidate>
-            <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
-              <div>
-                <Label htmlFor="name">Name</Label>
-                <Input id="name" placeholder="Jane Doe" {...register("name")} />
-                {errors.name && (
-                  <p className="text-xs text-red-600 mt-1">{errors.name.message}</p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="role">Role</Label>
-                <Input id="role" placeholder="Consultant" {...register("role")} />
-              </div>
-              <div>
-                <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Adding..." : "Add"}</Button>
-              </div>
-            </CardContent>
-          </form>
-        </Card>
-
-        <Separator />
-
-        {loading ? (
-          <p>Loading...</p>
-        ) : error ? (
-          <div className="bg-red-50 text-red-700 p-3 rounded text-sm">{error}</div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {employees.map((e) => (
-              <Card key={e.id} className="hover:shadow transition">
-                <CardHeader>
-                  <CardTitle className="flex items-center justify-between">
-                    {editing[e.id] ? (
-                      <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-2 items-end">
-                        <div>
-                          <Label>Name</Label>
-                          <Input
-                            value={editValues[e.id]?.name ?? e.name}
-                            onChange={(ev) => setEditValues((s) => ({ ...s, [e.id]: { ...(s[e.id] || { role: e.role ?? "" }), name: ev.target.value } }))}
-                          />
-                        </div>
-                        <div>
-                          <Label>Role</Label>
-                          <Input
-                            value={editValues[e.id]?.role ?? e.role ?? ""}
-                            onChange={(ev) => setEditValues((s) => ({ ...s, [e.id]: { ...(s[e.id] || { name: e.name }), role: ev.target.value } }))}
-                          />
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        <span>{e.name}</span>
-                        <span className="text-xs text-slate-500">{e.role ?? "—"}</span>
-                      </>
-                    )}
-                  </CardTitle>
-                  <CardDescription>Created {new Date(e.created_at).toLocaleDateString()}</CardDescription>
-                </CardHeader>
-                <CardContent className="flex flex-wrap gap-2">
-                  {editing[e.id] ? (
-                    <>
-                      <Button onClick={() => saveEdit(e.id)}>Save</Button>
-                      <Button variant="outline" onClick={() => cancelEdit(e.id)}>Cancel</Button>
-                    </>
-                  ) : (
-                    <>
-                      <Button onClick={() => router.push(`/employees/${e.id}`)}>Open</Button>
-                      <Button variant="secondary" onClick={() => startEdit(e)}>Edit</Button>
-                      <Button variant="destructive" onClick={() => onDelete(e.id)} disabled={!!deleting[e.id]}>
-                        {deleting[e.id] ? "Deleting..." : "Delete"}
-                      </Button>
-                    </>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-      </main>
+    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
+      <p className="text-sm text-[var(--color-text)]/80">Redirecting to Admin…</p>
     </div>
   );
 }

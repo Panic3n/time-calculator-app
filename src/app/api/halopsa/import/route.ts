@@ -285,8 +285,8 @@ export async function POST(req: NextRequest) {
         logged: Math.round(totals.logged * 100) / 100,
         billed: Math.round(totals.billed * 100) / 100,
       };
-      // Only set 'worked' for new rows; preserve existing worked by omitting the field
-      if (!ex) base.worked = 0;
+      // Always set 'worked': 0 for new rows, preserve existing value for updates
+      base.worked = ex?.worked ?? 0;
       return base;
     });
 

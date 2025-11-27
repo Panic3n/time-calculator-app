@@ -22,6 +22,11 @@ import {
 type Employee = { id: string; name: string; role: string | null };
 type FiscalYear = { id: string; label: string; available_hours: number | null };
 type MonthEntry = { employee_id: string; fiscal_year_id: string; month_index: number; worked: number; logged: number; billed: number };
+type TeamGoals = {
+  personal_billed_pct_goal: number;
+  personal_logged_pct_goal: number;
+  personal_attendance_pct_goal: number;
+};
 
 type Row = {
   id: string;
@@ -35,6 +40,15 @@ type Row = {
   attendancePct: number;
 };
 
+function getMetricColor(value: number, goal: number): string {
+  if (!goal) return "text-[var(--color-text)]";
+  const diff = goal - value;
+  const pctDiff = (diff / goal) * 100;
+  if (pctDiff >= 20) return "text-red-500";
+  if (pctDiff >= 1) return "text-yellow-500";
+  return "text-green-500";
+}
+
 export default function TeamPage() {
   const router = useRouter();
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -45,6 +59,7 @@ export default function TeamPage() {
   const [entriesCompare, setEntriesCompare] = useState<MonthEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [goals, setGoals] = useState<TeamGoals | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({}); // employee_id -> included (from DB)
 
   // CSV import state
@@ -108,6 +123,23 @@ export default function TeamPage() {
   useEffect(() => {
     const load = async () => {
       try {
+        // Check if user is admin
+        const { data: sess } = await supabaseBrowser.auth.getSession();
+        const userId = sess?.session?.user?.id;
+        if (!userId) {
+          router.push("/auth");
+          return;
+        }
+        const { data: prof } = await supabaseBrowser
+          .from("app_profiles")
+          .select("is_admin")
+          .eq("user_id", userId)
+          .single();
+        if (!prof?.is_admin) {
+          router.push("/dashboard");
+          return;
+        }
+
         const [{ data: emps, error: e1 }, { data: fys, error: e2 }] = await Promise.all([
           supabaseBrowser.from("employees").select("id, name, role").order("name"),
           supabaseBrowser.from("fiscal_years").select("id, label, available_hours").order("start_date", { ascending: false }),
@@ -125,7 +157,7 @@ export default function TeamPage() {
       }
     };
     load();
-  }, []);
+  }, [router]);
 
   // Load inclusion map from DB for selected FY
   useEffect(() => {
@@ -140,6 +172,30 @@ export default function TeamPage() {
       } catch {}
     };
     loadIncluded();
+  }, [yearId]);
+
+  // Load team goals for color coding
+  useEffect(() => {
+    const loadGoals = async () => {
+      if (!yearId) {
+        setGoals(null);
+        return;
+      }
+      try {
+        const { data, error } = await supabaseBrowser
+          .from("team_goals")
+          .select("personal_billed_pct_goal, personal_logged_pct_goal, personal_attendance_pct_goal")
+          .eq("fiscal_year_id", yearId)
+          .limit(1);
+        if (error) throw error;
+        const row = (data as any[])?.[0];
+        setGoals(row || { personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0 });
+      } catch (e: any) {
+        // Goals not found, use defaults
+        setGoals({ personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0 });
+      }
+    };
+    loadGoals();
   }, [yearId]);
 
   // CSV helpers moved to component scope
@@ -397,18 +453,20 @@ export default function TeamPage() {
 
   const teamAverages = useMemo(() => {
     if (rows.length === 0) return { pctLogged: 0, pctBilled: 0, attendancePct: 0 };
-    const sum = rows.reduce((acc, r) => {
-      acc.pctLogged += r.pctLogged;
-      acc.pctBilled += r.pctBilled;
-      acc.attendancePct += r.attendancePct;
-      return acc;
-    }, { pctLogged: 0, pctBilled: 0, attendancePct: 0 });
-    return {
-      pctLogged: Math.round((sum.pctLogged / rows.length) * 10) / 10,
-      pctBilled: Math.round((sum.pctBilled / rows.length) * 10) / 10,
-      attendancePct: Math.round((sum.attendancePct / rows.length) * 10) / 10,
-    };
-  }, [rows]);
+    // Calculate from totals for logged and billed
+    const totalWorked = rows.reduce((acc, r) => acc + r.worked, 0);
+    const totalLogged = rows.reduce((acc, r) => acc + r.logged, 0);
+    const totalBilled = rows.reduce((acc, r) => acc + r.billed, 0);
+    const pctLogged = totalWorked ? Math.round((totalLogged / totalWorked) * 1000) / 10 : 0;
+    const pctBilled = totalWorked ? Math.round((totalBilled / totalWorked) * 1000) / 10 : 0;
+    // Attendance is median of individual attendance percentages
+    const attendanceValues = rows.map(r => r.attendancePct).sort((a, b) => a - b);
+    const mid = Math.floor(attendanceValues.length / 2);
+    const attendancePct = attendanceValues.length % 2 !== 0
+      ? attendanceValues[mid]
+      : Math.round(((attendanceValues[mid - 1] + attendanceValues[mid]) / 2) * 10) / 10;
+    return { pctLogged, pctBilled, attendancePct };
+  }, [rows, years, yearId]);
 
   const monthlyChartData = useMemo(() => {
     const months = fiscalMonths();
@@ -488,16 +546,16 @@ export default function TeamPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
-      <nav className="bg-[var(--color-bg)] border-b border-[var(--color-surface)]">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+    <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10">
+      <nav className="bg-[var(--color-bg)]/80 backdrop-blur-sm border-b border-[var(--color-surface)]/40">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold">Team Overview</h1>
+            <h1 className="text-3xl font-bold tracking-tight text-[var(--color-text)]">Team Overview</h1>
           </div>
           <div className="flex items-center gap-2">
             {years.length > 0 ? (
               <select
-                className="border border-[var(--color-surface)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-md h-9 px-2 text-sm"
+                className="border border-[var(--color-surface)] bg-[var(--color-bg)]/80 backdrop-blur-sm text-[var(--color-text)] rounded-lg h-10 px-3 text-sm font-medium shadow-md hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50"
                 value={yearId}
                 onChange={(e) => setYearId(e.target.value)}
               >
@@ -508,7 +566,7 @@ export default function TeamPage() {
             ) : null}
             {years.length > 0 ? (
               <select
-                className="border border-[var(--color-surface)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-md h-9 px-2 text-sm"
+                className="border border-[var(--color-surface)] bg-[var(--color-bg)]/80 backdrop-blur-sm text-[var(--color-text)] rounded-lg h-10 px-3 text-sm font-medium shadow-md hover:shadow-lg transition-shadow focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/50"
                 value={compareYearId}
                 onChange={(e) => setCompareYearId(e.target.value)}
               >
@@ -541,14 +599,83 @@ export default function TeamPage() {
         </div>
       </nav>
 
-      <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
         {loading ? (
           <p>Loading...</p>
         ) : error ? (
           <div className="bg-red-900/30 text-red-300 p-3 rounded text-sm">{error}</div>
         ) : (
           <>
-            {/* Import UI removed in favor of API-based sync */}
+            <div>
+              <div className="mb-6">
+                <h2 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">Team Metrics</h2>
+                <p className="text-sm text-[var(--color-text)]/60 font-medium mt-1">Yearly totals and percentages per employee</p>
+                <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+                {rows.map((r) => (
+                  <div key={r.id} className="group relative">
+                    <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                    <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-6 space-y-4 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+                      <div className="space-y-1">
+                        <h3 className="text-lg font-bold text-[var(--color-text)]">{r.name}</h3>
+                        {r.role && <p className="text-xs text-[var(--color-text)]/60 font-medium">{r.role}</p>}
+                      </div>
+                      
+                      <div className="grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                          <p className="text-[var(--color-text)]/60 text-xs font-medium">Worked</p>
+                          <p className="font-semibold text-[var(--color-text)]">{r.worked.toFixed(1)} h</p>
+                        </div>
+                        <div>
+                          <p className="text-[var(--color-text)]/60 text-xs font-medium">Logged</p>
+                          <p className="font-semibold text-[var(--color-text)]">{r.logged.toFixed(1)} h</p>
+                        </div>
+                        <div>
+                          <p className="text-[var(--color-text)]/60 text-xs font-medium">Billed</p>
+                          <p className="font-semibold text-[var(--color-text)]">{r.billed.toFixed(1)} h</p>
+                        </div>
+                      </div>
+
+                      <div className="pt-2 border-t border-[var(--color-surface)]/40 grid grid-cols-3 gap-3 text-sm">
+                        <div>
+                          <p className="text-[var(--color-text)]/60 text-xs font-medium">% Logged</p>
+                          <p className={`text-lg font-bold ${getMetricColor(r.pctLogged, goals?.personal_logged_pct_goal ?? 0)}`}>{r.pctLogged}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[var(--color-text)]/60 text-xs font-medium">% Billed</p>
+                          <p className={`text-lg font-bold ${getMetricColor(r.pctBilled, goals?.personal_billed_pct_goal ?? 0)}`}>{r.pctBilled}%</p>
+                        </div>
+                        <div>
+                          <p className="text-[var(--color-text)]/60 text-xs font-medium">Attendance</p>
+                          <p className={`text-lg font-bold ${getMetricColor(r.attendancePct, goals?.personal_attendance_pct_goal ?? 0)}`}>{r.attendancePct}%</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="mt-8 p-6 rounded-2xl bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40 backdrop-blur-sm">
+                <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">Team Averages</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                  <div>
+                    <p className="text-[var(--color-text)]/60 text-xs font-medium mb-1">% Logged</p>
+                    <p className={`text-2xl font-bold ${getMetricColor(teamAverages.pctLogged, goals?.personal_logged_pct_goal ?? 0)}`}>{teamAverages.pctLogged}%</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text)]/60 text-xs font-medium mb-1">% Billed</p>
+                    <p className={`text-2xl font-bold ${getMetricColor(teamAverages.pctBilled, goals?.personal_billed_pct_goal ?? 0)}`}>{teamAverages.pctBilled}%</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text)]/60 text-xs font-medium mb-1">Attendance %</p>
+                    <p className={`text-2xl font-bold ${getMetricColor(teamAverages.attendancePct, goals?.personal_attendance_pct_goal ?? 0)}`}>{teamAverages.attendancePct}%</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Team Monthly % Chart */}
             <Card>
               <CardHeader>
                 <CardTitle>Team Monthly %</CardTitle>
@@ -610,54 +737,6 @@ export default function TeamPage() {
                 </CardContent>
               </Card>
             ) : null}
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Team Metrics</CardTitle>
-                <CardDescription>Yearly totals and percentages per employee. Use the checkboxes to include/exclude employees in charts and averages.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {/* Employee inclusion is managed in Admin and applied read-only here */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="text-left border-b border-[var(--color-surface)]">
-                        <th className="py-2">Employee</th>
-                        <th className="py-2">Role</th>
-                        <th className="py-2">Worked</th>
-                        <th className="py-2">Logged</th>
-                        <th className="py-2">Billed</th>
-                        <th className="py-2">% Logged</th>
-                        <th className="py-2">% Billed</th>
-                        <th className="py-2">Attendance %</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {rows.map((r) => (
-                        <tr key={r.id} className="border-b border-[var(--color-surface)]/60">
-                          <td className="py-2">{r.name}</td>
-                          <td className="py-2">{r.role ?? "—"}</td>
-                          <td className="py-2">{r.worked.toFixed(1)}</td>
-                          <td className="py-2">{r.logged.toFixed(1)}</td>
-                          <td className="py-2">{r.billed.toFixed(1)}</td>
-                          <td className="py-2">{r.pctLogged}%</td>
-                          <td className="py-2">{r.pctBilled}%</td>
-                          <td className="py-2">{r.attendancePct}%</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                    <tfoot>
-                      <tr>
-                        <td className="pt-3 font-semibold" colSpan={5}>Team average</td>
-                        <td className="pt-3 font-semibold">{teamAverages.pctLogged}%</td>
-                        <td className="pt-3 font-semibold">{teamAverages.pctBilled}%</td>
-                        <td className="pt-3 font-semibold">{teamAverages.attendancePct}%</td>
-                      </tr>
-                    </tfoot>
-                  </table>
-                </div>
-              </CardContent>
-            </Card>
           </>
         )}
       </main>

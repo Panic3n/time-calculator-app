@@ -1,44 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { supabaseBrowser } from "@/lib/supabaseClient";
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-
-type FiscalYear = { id: string; label: string };
-type Employee = { id: string; name: string };
-
-type Budget = {
-  id?: string;
-  fiscal_year_id: string;
-  department: string;
-  teckningsbidrag: number;
-};
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 
 export default function BudgetsPage() {
-  const [years, setYears] = useState<FiscalYear[]>([]);
-  const [yearId, setYearId] = useState<string>(""); // Budget FY
-  const [billedYearId, setBilledYearId] = useState<string>(""); // FY used to compute billed hours
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [budget, setBudget] = useState<Budget | null>(null);
-  const [busySave, setBusySave] = useState(false);
-
-  const [employees, setEmployees] = useState<Employee[]>([]);
-  const [includedMap, setIncludedMap] = useState<Record<string, boolean>>({}); // from team_included_employees
-  const [billedEntries, setBilledEntries] = useState<{ employee_id: string; billed: number; worked: number; logged: number }[]>([]);
-  // Per charge type rows for billed
-  const [billedTypeRows, setBilledTypeRows] = useState<{ employee_id: string; charge_type_name: string; hours: number }[]>([]);
-  // Available billable charge types and selection map
-  const [chargeTypes, setChargeTypes] = useState<string[]>([]);
-  const [includedTypes, setIncludedTypes] = useState<Record<string, boolean>>({}); // from included_charge_types
-  const billedHoursTotal = useMemo(() => {
-    return Math.round(
-      billedEntries.filter(e => includedMap[e.employee_id]).reduce((acc, r) => acc + Number(r.billed || 0), 0) * 100
-    ) / 100;
-  }, [billedEntries, includedMap]);
+  const router = useRouter();
   const billedHoursFromTypes = useMemo(() => {
     if (!billedTypeRows.length) return 0;
     // Sum hours for selected employees and selected charge types
@@ -69,43 +35,8 @@ export default function BudgetsPage() {
   const [extraHours, setExtraHours] = useState<number>(0);
 
   useEffect(() => {
-    const loadYears = async () => {
-      try {
-        const { data, error } = await supabaseBrowser
-          .from("fiscal_years")
-          .select("id, label")
-          .order("start_date", { ascending: false });
-        if (error) throw error;
-        setYears(data as any);
-        const preferred = (data as any[])[0]?.id as string | undefined;
-        if (preferred) setYearId(preferred);
-        if (preferred) setBilledYearId(preferred);
-        // Load employees
-        const { data: emps, error: eErr } = await supabaseBrowser
-          .from("employees")
-          .select("id, name")
-          .order("name");
-        if (eErr) throw eErr;
-        setEmployees(emps as any);
-        // load included employees for preferred billed FY
-        const fy = (data as any[])[0]?.id as string | undefined;
-        if (fy) {
-          try {
-            const resp = await fetch(`/api/admin/team-included?fiscal_year_id=${fy}`, { cache: "no-store" });
-            const json = await resp.json();
-            const map: Record<string, boolean> = {};
-            (json?.rows || []).forEach((r: any) => { map[String(r.employee_id)] = true; });
-            setIncludedMap(map);
-          } catch {}
-        }
-      } catch (e: any) {
-        setError(e?.message || "Failed to load fiscal years");
-      } finally {
-        setLoading(false);
-      }
-    };
-    loadYears();
-  }, []);
+    router.push("/admin");
+  }, [router]);
 
   // Load budget when budget FY changes
   useEffect(() => {
@@ -221,137 +152,9 @@ export default function BudgetsPage() {
     }
   };
 
-  if (loading) return <div className="p-6">Loading...</div>;
-  if (error) return <div className="p-6 text-red-500">{error}</div>;
-
   return (
-    <div className="min-h-screen bg-[var(--color-bg)]">
-      <nav className="bg-[var(--color-bg)] border-b border-[var(--color-surface)]">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <h1 className="text-xl font-semibold">Budgets</h1>
-          <div className="flex items-center gap-2">
-            {years.length > 0 && (
-              <select
-                className="border border-[var(--color-surface)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-md h-9 px-2 text-sm"
-                value={yearId}
-                onChange={(e) => setYearId(e.target.value)}
-              >
-                {years.map((y) => (
-                  <option key={y.id} value={y.id}>{y.label}</option>
-                ))}
-              </select>
-            )}
-            {years.length > 0 && (
-              <select
-                className="border border-[var(--color-surface)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-md h-9 px-2 text-sm"
-                value={billedYearId}
-                onChange={(e) => setBilledYearId(e.target.value)}
-                title="Billed hours fiscal year"
-              >
-                {years.map((y) => (
-                  <option key={y.id} value={y.id}>Billed FY: {y.label}</option>
-                ))}
-              </select>
-            )}
-          </div>
-        </div>
-      </nav>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>IT Teckningsbidrag</CardTitle>
-            <CardDescription>Store the department's teckningsbidrag for the selected fiscal year.</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {/* Employee inclusion is managed in Admin. Using DB selections for billed calculations. */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-              <div>
-                <label className="text-sm block mb-1">Teckningsbidrag (SEK)</label>
-                <Input
-                  inputMode="decimal"
-                  value={String(budget?.teckningsbidrag ?? 0)}
-                  onChange={(e) => setBudget((b) => ({ ...(b as Budget), teckningsbidrag: Number((e.target.value || '0').replace(',', '.')) }))}
-                />
-              </div>
-              <div>
-                <label className="text-sm block mb-1">Total billed hours (selected employees, {years.find(y=>y.id===billedYearId)?.label || ''})</label>
-                <Input value={billedHours.toFixed(2)} readOnly />
-              </div>
-              <div>
-                <label className="text-sm block mb-1">Avg billed hourly rate (SEK/h)</label>
-                <Input value={avgBilledRate.toFixed(2)} readOnly />
-              </div>
-            </div>
-            {/* Charge types included are managed in Admin and applied from DB; none => none allowed */}
-            <div className="space-y-2">
-              <label className="text-sm block">Included billable charge types</label>
-              <div className="flex flex-wrap gap-3 p-3 border rounded-md">
-                {chargeTypes.length === 0 && (
-                  <span className="text-sm text-gray-500">No charge types found</span>
-                )}
-                {chargeTypes.map((ct) => (
-                  <span key={ct} className={includedTypes[ct] ? "text-sm" : "text-sm opacity-50"}>{ct}</span>
-                ))}
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
-              <div>
-                <label className="text-sm block mb-1">Total worked hours (selected employees, {years.find(y=>y.id===billedYearId)?.label || ''})</label>
-                <Input value={workedHours.toFixed(2)} readOnly />
-              </div>
-              <div>
-                <label className="text-sm block mb-1">%-billed hours (billed/worked)</label>
-                <Input value={`${pctBilled.toFixed(1)}%`} readOnly />
-              </div>
-            </div>
-            <div>
-              <Button onClick={saveBudget} disabled={busySave || !budget}>Save</Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Simulation</CardTitle>
-            <CardDescription>How much would teckningsbidrag increase if we log more billable time at the current average rate?</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm block mb-1">Extra billable hours: {extraHours} h</label>
-              <input
-                type="range"
-                min={0}
-                max={1000}
-                step={1}
-                value={extraHours}
-                onChange={(e) => setExtraHours(Number(e.target.value))}
-                className="w-full"
-              />
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm block mb-1">Projected teckningsbidrag (SEK)</label>
-                <Input value={projected.newTB.toFixed(2)} readOnly />
-              </div>
-              <div>
-                <label className="text-sm block mb-1">TB increase (SEK)</label>
-                <Input value={projected.deltaTB.toFixed(2)} readOnly />
-              </div>
-              <div>
-                <label className="text-sm block mb-1">Projected billed hours</label>
-                <Input value={projected.newHours.toFixed(2)} readOnly />
-              </div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="text-sm block mb-1">Projected %-billed hours</label>
-                <Input value={`${(workedHours ? Math.round((((billedHours + extraHours) / workedHours) * 100) * 10) / 10 : 0).toFixed(1)}%`} readOnly />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </main>
+    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
+      <p className="text-sm text-[var(--color-text)]/80">Redirecting to Admin…</p>
     </div>
   );
 }
