@@ -314,7 +314,7 @@ export async function POST(req: NextRequest) {
         month_index: idx,
         logged: Math.round(totals.logged * 100) / 100,
         billed: Math.round(totals.billed * 100) / 100,
-        worked: Math.round(totals.worked * 100) / 100,
+        worked: Math.round(totals.worked * 10000) / 10000,  // Higher precision for worked hours to match Halo
       };
       return base;
     });
