@@ -17,7 +17,11 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "from and to (YYYY-MM-DD) are required" }, { status: 400 });
     }
 
-    const query: Record<string, string> = { start_date: from, end_date: to };
+    const query: Record<string, string> = { 
+      start_date: from, 
+      end_date: to,
+      limit: "10000" 
+    };
     // If debugging specific agent, filter by it
     // But for import logic, we usually fetch all and filter in memory.
     // Let's keep it consistent with import logic if mode is set?
@@ -87,8 +91,9 @@ export async function POST(req: NextRequest) {
             diffHours = diffMs / (1000 * 60 * 60);
             
             actualBreaks = actualBreaksMap[mapKey] || 0;
-            allowedBreaks = Number(pick<any>(ts, ["allowed_break_hours", "allowedBreakHours", "break_hours", "breakHours"]) ?? 0);
-            deduction = Math.max(actualBreaks, allowedBreaks);
+            // allowedBreaks = Number(pick<any>(ts, ["allowed_break_hours", "allowedBreakHours", "break_hours", "breakHours"]) ?? 0);
+            // deduction = Math.max(actualBreaks, allowedBreaks);
+            deduction = actualBreaks;
             
             worked = Math.max(0, diffHours - deduction);
           }
