@@ -108,10 +108,20 @@ export async function POST(req: NextRequest) {
     // 3b) Also fetch Timesheet for work_hours data (daily summary with auto-corrected hours)
     const timesheetData: any[] = await haloFetch("Timesheet", { query });
     
+    // First pass: collect all agent IDs that have actual time entries
+    const agentsWithEntries = new Set<string>();
+    for (const ev of events) {
+      const agentId = `${pick<any>(ev, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
+      if (agentId) agentsWithEntries.add(agentId);
+    }
+    
     // Build a map of work_hours by agent_id and date for merging
+    // Only include work_hours for agents that have actual time entries
     const workedHoursMap: Record<string, number> = {}; // key: "agentId:YYYY-MM-DD"
     for (const ts of timesheetData) {
       const agentId = `${pick<any>(ts, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
+      // Only process agents that have actual time entries
+      if (!agentsWithEntries.has(agentId)) continue;
       const dateVal = pick<string>(ts, ["date", "day"]) || "";
       if (agentId && dateVal) {
         const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
