@@ -176,6 +176,8 @@ export async function POST(req: NextRequest) {
     const agg: Record<string, Totals> = {};
     // per-charge-type billed aggregation
     const aggTypes: Record<string, number> = {};
+    // Track which agent+date combinations we've already added worked hours for (to avoid duplicates)
+    const workedHoursAdded: Set<string> = new Set();
     let readRows = 0;
     for (const ev of events) {
       readRows++;
@@ -270,7 +272,13 @@ export async function POST(req: NextRequest) {
       const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
-      cur.worked += worked > 0 ? worked : 0;
+      
+      // Only add worked hours once per agent+date (to avoid counting same day multiple times)
+      const workedKey = `${agentId}:${dateOnly}`;
+      if (!workedHoursAdded.has(workedKey) && worked > 0) {
+        cur.worked += worked;
+        workedHoursAdded.add(workedKey);
+      }
 
       // Per charge type aggregation (store name lowercased for normalization)
       if (billable > 0 && ct) {
