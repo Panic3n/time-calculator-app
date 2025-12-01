@@ -214,11 +214,29 @@ export default function AdminPage() {
       if (newFY.start) payload.start_date = newFY.start;
       if (newFY.end) payload.end_date = newFY.end;
       if (newFY.available) payload.available_hours = Number((newFY.available||"0").replace(",","."));
-      const { error } = await supabaseBrowser.from("fiscal_years").insert(payload);
+      const { data: inserted, error } = await supabaseBrowser.from("fiscal_years").insert(payload).select("id");
       if (error) throw error;
+      
+      // Trigger automatic sync for the new fiscal year
+      const newFYId = (inserted?.[0] as any)?.id;
+      if (newFYId) {
+        console.log(`Triggering sync for new fiscal year: ${newFYId}`);
+        try {
+          await fetch('/api/halopsa/sync-auto', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fiscalYearId: newFYId }),
+          });
+        } catch (syncErr) {
+          console.warn("Failed to trigger sync for new fiscal year:", syncErr);
+          // Don't fail the fiscal year creation if sync fails
+        }
+      }
+      
       setNewFY({ label: "", start: "", end: "", available: "" });
       const { data } = await supabaseBrowser.from("fiscal_years").select("id, label, start_date, end_date, available_hours").order("start_date", { ascending: false });
       setYears((data as any[]) || []);
+      alert("Fiscal year created! Sync has been triggered in the background.");
     } catch (e: any) {
       alert(e?.message || "Failed to create fiscal year");
     } finally {
