@@ -128,10 +128,10 @@ export async function POST(req: NextRequest) {
       if (agentId && dateVal) {
         const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
         const mapKey = `${agentId}:${dateStr}`;
-        // Only include actual_hours (actual time worked) if this agent+date has actual time entries
+        // Only include work_hours if this agent+date has actual time entries
         if (!agentDatesWithEntries.has(mapKey)) continue;
-        // Use actual_hours from Timesheet (the actual time worked on that day)
-        const worked = Number(pick<any>(ts, ["actual_hours", "actualHours"]) ?? 0);
+        // Use work_hours from Timesheet (Halo's auto-corrected worked hours)
+        const worked = Number(pick<any>(ts, ["work_hours", "workHours", "worked_hours", "workedHours"]) ?? 0);
         workedHoursMap[mapKey] = (workedHoursMap[mapKey] || 0) + worked;
       }
     }
