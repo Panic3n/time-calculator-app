@@ -578,23 +578,6 @@ export default function TeamPage() {
             ) : null}
             <Button onClick={exportCsv}>Export CSV</Button>
             <Button variant="outline" onClick={exportDeltasCsv} disabled={!compareYearId}>Export Deltas CSV</Button>
-            <Button variant="secondary" onClick={async () => {
-              try {
-                const agentMap = (() => {
-                  try { return JSON.parse(localStorage.getItem('agent_map') || '{}'); } catch { return {}; }
-                })();
-                const res = await fetch('/api/halopsa/import', {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ fiscalYearId: yearId, agentMap }),
-                });
-                const json = await res.json();
-                if (!res.ok) throw new Error(json?.error || 'Sync failed');
-                alert('HaloPSA sync started. Check server logs / Next.js route for progress.');
-              } catch (e: any) {
-                alert(e?.message || 'Failed to start sync');
-              }
-            }}>Sync from HaloPSA</Button>
           </div>
         </div>
       </nav>
