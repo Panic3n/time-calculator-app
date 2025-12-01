@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       if (empId) finalAgentMapByName[a] = empId;
     }
 
-    // 3) Fetch TimesheetEvent from HaloPSA
+    // 3) Fetch Timesheet from HaloPSA (includes work_hours field)
     // Params supported by Swagger: start_date, end_date, agents, utcoffset
     // Do not filter by 'agents' to avoid missing matches due to naming; rely on server-side mapping instead.
     // const agentNames = Object.keys(finalAgentMapByName);
@@ -104,7 +104,7 @@ export async function POST(req: NextRequest) {
     } as any;
 
 
-    const events: any[] = await haloFetch("TimesheetEvent", { query });
+    const events: any[] = await haloFetch("Timesheet", { query });
 
     // Load billable charge type allowlist from Supabase if present
     let billableTypeSet: Set<string> | null = null;
