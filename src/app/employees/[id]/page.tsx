@@ -57,6 +57,28 @@ export default function EmployeeDetailPage() {
   const [yearWorked, setYearWorked] = useState<string>("0");
   const [yearLoggedText, setYearLoggedText] = useState<string>("0:00");
   const [yearBilledText, setYearBilledText] = useState<string>("0:00");
+  const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
+
+  // Load monthly available hours
+  useEffect(() => {
+    const loadMonthly = async () => {
+      if (!yearId) { setMonthlyHours({}); return; }
+      try {
+        const { data } = await supabaseBrowser
+          .from("monthly_available_hours")
+          .select("month_index, available_hours")
+          .eq("fiscal_year_id", yearId);
+        const map: Record<number, number> = {};
+        (data || []).forEach((r: any) => {
+          map[r.month_index] = Number(r.available_hours || 0);
+        });
+        setMonthlyHours(map);
+      } catch {
+        setMonthlyHours({});
+      }
+    };
+    loadMonthly();
+  }, [yearId]);
 
   function decimalToHM(dec: number): string {
     if (!Number.isFinite(dec)) return "0:00";
@@ -413,8 +435,26 @@ export default function EmployeeDetailPage() {
               <p className="text-lg font-semibold">
                 {(() => {
                   const fy = years.find(y => y.id === yearId);
-                  const avail = Number(fy?.available_hours ?? 0);
-                  const pct = avail > 0 ? Math.round((totals.worked / avail) * 1000) / 10 : 0;
+                  if (!fy) return "0%";
+                  
+                  let cutoffIndex = 12;
+                  const now = new Date();
+                  const start = new Date(fy.start_date); 
+                  const end = new Date(fy.end_date);
+                  
+                  if (now < start) cutoffIndex = 0;
+                  else if (now > end) cutoffIndex = 12;
+                  else cutoffIndex = ((now.getUTCMonth() + 12) - 8) % 12;
+
+                  let availSum = 0;
+                  let workedSum = 0;
+                  for (let i = 0; i < cutoffIndex; i++) {
+                    availSum += (monthlyHours[i] ?? 160);
+                    const e = entries.find(x => x.month_index === i);
+                    workedSum += (e?.worked || 0);
+                  }
+                  
+                  const pct = availSum > 0 ? Math.round((workedSum / availSum) * 1000) / 10 : 0;
                   return `${pct}%`;
                 })()}
               </p>

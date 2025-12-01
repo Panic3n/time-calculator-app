@@ -30,7 +30,7 @@ export default function AdminPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [years, setYears] = useState<FiscalYear[]>([]);
   const [yearId, setYearId] = useState<string>("");
-  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board" | "halo-sync">("employees");
+  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board" | "halo-sync" | "entries">("employees");
 
   // Employees: create/edit/delete
   const [newEmployee, setNewEmployee] = useState<{ name: string; role: string }>({ name: "", role: "" });
@@ -84,6 +84,70 @@ export default function AdminPage() {
   const [syncBusy, setSyncBusy] = useState(false);
   const [syncStatus, setSyncStatus] = useState<string>("");
   const [agentMap, setAgentMap] = useState<Record<string, string>>({});
+
+  // Time Entries State
+  const [entriesYearId, setEntriesYearId] = useState<string>("");
+  const [entriesEmployeeId, setEntriesEmployeeId] = useState<string>("");
+  const [entriesData, setEntriesData] = useState<any[]>([]);
+  const [entriesLoading, setEntriesLoading] = useState(false);
+  const [entriesBusySave, setEntriesBusySave] = useState(false);
+
+  // Work Hours per Month State
+  const [monthlyHours, setMonthlyHours] = useState<number[]>(new Array(12).fill(160));
+  const [monthlyHoursBusy, setMonthlyHoursBusy] = useState(false);
+
+  // Load monthly hours when section is fiscal
+  useEffect(() => {
+    const loadMonthly = async () => {
+      if (section !== "fiscal" || !yearId) return;
+      setMonthlyHoursBusy(true);
+      try {
+        const { data, error } = await supabaseBrowser
+          .from("monthly_available_hours")
+          .select("month_index, available_hours")
+          .eq("fiscal_year_id", yearId);
+        if (!error && data && data.length > 0) {
+          const arr = new Array(12).fill(0);
+          // If we have data, fill it. If gaps, maybe default to 160 or 0?
+          // Let's assume 160 default if row missing but others exist, or just 0.
+          // Using 160 as a sensible default for "work hours".
+          for (let i = 0; i < 12; i++) arr[i] = 160; 
+          data.forEach((r: any) => {
+            if (r.month_index >= 0 && r.month_index < 12) {
+              arr[r.month_index] = Number(r.available_hours || 0);
+            }
+          });
+          setMonthlyHours(arr);
+        } else {
+          // No rows found, default all to 160
+          setMonthlyHours(new Array(12).fill(160));
+        }
+      } catch {}
+      setMonthlyHoursBusy(false);
+    };
+    loadMonthly();
+  }, [section, yearId]);
+
+  const saveMonthlyHours = async () => {
+    if (!yearId) return;
+    setMonthlyHoursBusy(true);
+    try {
+      const payload = monthlyHours.map((h, i) => ({
+        fiscal_year_id: yearId,
+        month_index: i,
+        available_hours: h
+      }));
+      const { error } = await supabaseBrowser
+        .from("monthly_available_hours")
+        .upsert(payload, { onConflict: "fiscal_year_id,month_index" });
+      if (error) throw error;
+      alert("Saved work hours!");
+    } catch (e: any) {
+      alert(e?.message || "Failed to save");
+    } finally {
+      setMonthlyHoursBusy(false);
+    }
+  };
 
   useEffect(() => {
     const load = async () => {
@@ -359,6 +423,54 @@ export default function AdminPage() {
     }
   }, [budgetBilledYearId]);
 
+  // Load manual entries
+  useEffect(() => {
+    const loadEntries = async () => {
+      if (!entriesYearId || !entriesEmployeeId) {
+        setEntriesData([]);
+        return;
+      }
+      setEntriesLoading(true);
+      const { data, error } = await supabaseBrowser
+        .from("month_entries")
+        .select("*")
+        .eq("fiscal_year_id", entriesYearId)
+        .eq("employee_id", entriesEmployeeId);
+      if (!error) {
+        const map: Record<number, any> = {};
+        (data || []).forEach((r: any) => (map[r.month_index] = r));
+        const filled = Array.from({ length: 12 }).map((_, i) => map[i] || { month_index: i, worked: 0, logged: 0, billed: 0 });
+        setEntriesData(filled);
+      }
+      setEntriesLoading(false);
+    };
+    loadEntries();
+  }, [entriesYearId, entriesEmployeeId]);
+
+  const saveEntries = async () => {
+    setEntriesBusySave(true);
+    try {
+      const payload = entriesData.map((e) => ({
+        employee_id: entriesEmployeeId,
+        fiscal_year_id: entriesYearId,
+        month_index: e.month_index,
+        worked: Number(e.worked || 0),
+        logged: Number(e.logged || 0),
+        billed: Number(e.billed || 0),
+        ...(e.id ? { id: e.id } : {}),
+      }));
+      const { error } = await supabaseBrowser
+        .from("month_entries")
+        .upsert(payload, { onConflict: "employee_id,fiscal_year_id,month_index" });
+      if (error) throw error;
+      alert("Saved successfully!");
+    } catch (e: any) {
+      alert(`Error saving: ${e.message}`);
+    } finally {
+      setEntriesBusySave(false);
+    }
+  };
+
   // Load billed + worked + logged entries for budgets when billed FY changes
   useEffect(() => {
     const loadBudgetBilled = async () => {
@@ -601,7 +713,7 @@ export default function AdminPage() {
               onClick={() => setSection("fiscal")}
               className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "fiscal" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
             >
-              Fiscal years
+              Work Hours per Month
             </button>
             <button
               type="button"
@@ -651,6 +763,13 @@ export default function AdminPage() {
               className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "halo-sync" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
             >
               Halo Sync
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("entries")}
+              className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "entries" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
+            >
+              Time Entries (Manual)
             </button>
           </nav>
         </aside>
@@ -748,6 +867,84 @@ export default function AdminPage() {
                 </CardContent>
               </Card>
             </>
+          )}
+
+          {section === "fiscal" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Work Hours per Month</CardTitle>
+                  <CardDescription>Set available work hours for each month in the selected fiscal year.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="text-sm block mb-2 font-medium">Select Fiscal Year</label>
+                    <select
+                      className="w-full border border-[var(--color-text)]/20 bg-[var(--color-surface)] text-[var(--color-text)] rounded-lg h-10 px-3 text-sm"
+                      value={yearId}
+                      onChange={(e) => setYearId(e.target.value)}
+                    >
+                      {years.map((y) => (
+                        <option key={y.id} value={y.id}>{y.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                  
+                  {yearId && (
+                    <>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+                        {["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"].map((m, i) => (
+                          <div key={m}>
+                            <label className="text-xs font-medium text-[var(--color-text)]/70 block mb-1">{m}</label>
+                            <Input
+                              type="number"
+                              value={monthlyHours[i]}
+                              onChange={(e) => {
+                                const val = Number(e.target.value);
+                                setMonthlyHours(prev => {
+                                  const next = [...prev];
+                                  next[i] = val;
+                                  return next;
+                                });
+                              }}
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <Button onClick={saveMonthlyHours} disabled={monthlyHoursBusy}>
+                        {monthlyHoursBusy ? "Saving..." : "Save Work Hours"}
+                      </Button>
+                    </>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Manage Fiscal Years</CardTitle>
+                  <CardDescription>Create new fiscal years or edit existing ones</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-4 gap-3 items-end">
+                    <div>
+                      <label className="text-sm block mb-1">Label (e.g. 2024/2025)</label>
+                      <Input value={newFY.label} onChange={(e) => setNewFY((s) => ({ ...s, label: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-sm block mb-1">Start Date</label>
+                      <Input type="date" value={newFY.start} onChange={(e) => setNewFY((s) => ({ ...s, start: e.target.value }))} />
+                    </div>
+                    <div>
+                      <label className="text-sm block mb-1">End Date</label>
+                      <Input type="date" value={newFY.end} onChange={(e) => setNewFY((s) => ({ ...s, end: e.target.value }))} />
+                    </div>
+                    <div>
+                      <Button onClick={createFY} disabled={busyFY || !newFY.label.trim()}>Create FY</Button>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
           )}
 
           {section === "team" && (
@@ -1192,32 +1389,65 @@ export default function AdminPage() {
               {/* Dashboard Section */}
               <Card>
                 <CardHeader>
-                  <CardTitle>📊 Dashboard Page</CardTitle>
-                  <CardDescription>Yearly summary and monthly breakdown calculations</CardDescription>
+                  <CardTitle>📊 Time Calculation Logic</CardTitle>
+                  <CardDescription>How Logged, Billed, and Worked hours are derived from HaloPSA data</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-6">
                   <div className="space-y-4">
-                    <h3 className="font-semibold text-[var(--color-text)]">Yearly Summary</h3>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <h3 className="font-semibold text-[var(--color-text)]">Core Metrics</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
                       <div className="p-4 rounded-lg bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40">
-                        <p className="font-medium text-[var(--color-text)]">Worked Hours</p>
-                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Sum of all worked hours from month_entries</p>
-                        <code className="text-xs bg-[var(--color-bg)] p-2 rounded mt-2 block text-[var(--color-primary)]">SUM(worked)</code>
+                        <p className="font-medium text-[var(--color-text)]">Logged Hours</p>
+                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Productive time on tasks.</p>
+                        <div className="mt-3 text-xs text-[var(--color-text)]/60 space-y-1">
+                          <p><strong>Source:</strong> All Time Entries</p>
+                          <p><strong>Logic:</strong> Sum of raw time minus excluded types (Holidays, Vacations, Breaks).</p>
+                        </div>
                       </div>
                       <div className="p-4 rounded-lg bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40">
+                        <p className="font-medium text-[var(--color-text)]">Billed Hours</p>
+                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Revenue-generating time.</p>
+                        <div className="mt-3 text-xs text-[var(--color-text)]/60 space-y-1">
+                          <p><strong>Source:</strong> All Time Entries</p>
+                          <p><strong>Logic:</strong> Sum of raw time for entries with a Billable Charge Type.</p>
+                        </div>
+                      </div>
+                      <div className="p-4 rounded-lg bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40">
+                        <p className="font-medium text-[var(--color-text)]">Worked Hours</p>
+                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Physical time "in office".</p>
+                        <div className="mt-3 text-xs text-[var(--color-text)]/60 space-y-1">
+                          <p><strong>Source:</strong> Daily Start/End Times</p>
+                          <p><strong>Logic:</strong> (Daily Finish - Daily Start) - Total Logged Breaks.</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  <div className="space-y-4">
+                    <h3 className="font-semibold text-[var(--color-text)]">Derived Percentages</h3>
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      <div className="p-4 rounded-lg bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40">
                         <p className="font-medium text-[var(--color-text)]">Logged %</p>
-                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Percentage of logged vs worked hours</p>
-                        <code className="text-xs bg-[var(--color-bg)] p-2 rounded mt-2 block text-[var(--color-primary)]">(SUM(logged) / SUM(worked)) * 100</code>
+                        <code className="text-xs bg-[var(--color-bg)] p-2 rounded mt-2 block text-[var(--color-primary)]">(Logged / Worked) * 100</code>
                       </div>
                       <div className="p-4 rounded-lg bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40">
                         <p className="font-medium text-[var(--color-text)]">Billed %</p>
-                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Percentage of billed vs worked hours</p>
-                        <code className="text-xs bg-[var(--color-bg)] p-2 rounded mt-2 block text-[var(--color-primary)]">(SUM(billed) / SUM(worked)) * 100</code>
+                        <code className="text-xs bg-[var(--color-bg)] p-2 rounded mt-2 block text-[var(--color-primary)]">(Billed / Worked) * 100</code>
                       </div>
                       <div className="p-4 rounded-lg bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40">
                         <p className="font-medium text-[var(--color-text)]">Attendance %</p>
-                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Percentage of worked vs available hours</p>
-                        <code className="text-xs bg-[var(--color-bg)] p-2 rounded mt-2 block text-[var(--color-primary)]">(SUM(worked) / available_hours) * 100</code>
+                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Based on closed months only (strictly prior to current month).</p>
+                        <code className="text-xs bg-[var(--color-bg)] p-2 rounded mt-2 block text-[var(--color-primary)]">(Worked[Closed] / Available[Closed]) * 100</code>
+                      </div>
+                      <div className="p-4 rounded-lg bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40">
+                        <p className="font-medium text-[var(--color-text)]">Billable vs Share of Goal</p>
+                        <p className="text-sm text-[var(--color-text)]/70 mt-2">Contribution to team billable quota.</p>
+                        <div className="mt-2 space-y-1">
+                          <code className="text-xs bg-[var(--color-bg)] p-2 rounded block text-[var(--color-primary)]">Share = Team Billable Goal / Agent Count</code>
+                          <code className="text-xs bg-[var(--color-bg)] p-2 rounded block text-[var(--color-primary)]">(Total Billed / Share) * 100</code>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1397,6 +1627,101 @@ export default function AdminPage() {
                   >
                     {messageBusySave ? "Saving..." : "Save Message"}
                   </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {section === "entries" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Manual Time Entries</CardTitle>
+                  <CardDescription>Manually edit Worked Hours for employees. Logged/Billed hours are synced from Halo.</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                      <label className="text-sm block mb-2 font-medium">Fiscal Year</label>
+                      <select
+                        className="w-full border border-[var(--color-text)]/20 bg-[var(--color-surface)] text-[var(--color-text)] rounded-lg h-10 px-3 text-sm"
+                        value={entriesYearId}
+                        onChange={(e) => setEntriesYearId(e.target.value)}
+                      >
+                        <option value="">Choose fiscal year...</option>
+                        {years.map((y) => (
+                          <option key={y.id} value={y.id}>{y.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-sm block mb-2 font-medium">Employee</label>
+                      <select
+                        className="w-full border border-[var(--color-text)]/20 bg-[var(--color-surface)] text-[var(--color-text)] rounded-lg h-10 px-3 text-sm"
+                        value={entriesEmployeeId}
+                        onChange={(e) => setEntriesEmployeeId(e.target.value)}
+                      >
+                        <option value="">Choose employee...</option>
+                        {employees.map((e) => (
+                          <option key={e.id} value={e.id}>{e.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  {entriesYearId && entriesEmployeeId && (
+                    <>
+                      {entriesLoading ? (
+                        <p className="text-sm text-[var(--color-text)]/70">Loading...</p>
+                      ) : (
+                        <div className="space-y-4">
+                          <div className="overflow-x-auto border border-[var(--color-surface)] rounded-lg">
+                            <table className="w-full text-sm">
+                              <thead>
+                                <tr className="bg-[var(--color-surface)]/50 text-left border-b border-[var(--color-surface)]">
+                                  <th className="py-3 px-4 font-medium">Month</th>
+                                  <th className="py-3 px-4 font-medium">Logged (Halo)</th>
+                                  <th className="py-3 px-4 font-medium">Billed (Halo)</th>
+                                  <th className="py-3 px-4 font-medium">Worked (Manual)</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {entriesData.map((entry, i) => {
+                                  // Calculate month label (Sep = 0)
+                                  const monthLabels = ["Sep", "Oct", "Nov", "Dec", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug"];
+                                  return (
+                                    <tr key={i} className="border-b border-[var(--color-surface)]/50 last:border-0">
+                                      <td className="py-3 px-4">{monthLabels[entry.month_index]}</td>
+                                      <td className="py-3 px-4 opacity-70">{Number(entry.logged).toFixed(2)}</td>
+                                      <td className="py-3 px-4 opacity-70">{Number(entry.billed).toFixed(2)}</td>
+                                      <td className="py-3 px-4">
+                                        <Input
+                                          type="number"
+                                          className="w-32 h-8"
+                                          value={entry.worked}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setEntriesData(prev => {
+                                              const copy = [...prev];
+                                              copy[i] = { ...copy[i], worked: val };
+                                              return copy;
+                                            });
+                                          }}
+                                        />
+                                      </td>
+                                    </tr>
+                                  );
+                                })}
+                              </tbody>
+                            </table>
+                          </div>
+                          <Button onClick={saveEntries} disabled={entriesBusySave}>
+                            {entriesBusySave ? "Saving..." : "Save Changes"}
+                          </Button>
+                        </div>
+                      )}
+                    </>
+                  )}
                 </CardContent>
               </Card>
             </div>

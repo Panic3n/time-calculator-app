@@ -63,8 +63,30 @@ export default function DashboardPage() {
   const [goals, setGoals] = useState<TeamGoals | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
 
   const months = fiscalMonths();
+
+  // Load monthly available hours
+  useEffect(() => {
+    const loadMonthly = async () => {
+      if (!yearId) { setMonthlyHours({}); return; }
+      try {
+        const { data } = await supabaseBrowser
+          .from("monthly_available_hours")
+          .select("month_index, available_hours")
+          .eq("fiscal_year_id", yearId);
+        const map: Record<number, number> = {};
+        (data || []).forEach((r: any) => {
+          map[r.month_index] = Number(r.available_hours || 0);
+        });
+        setMonthlyHours(map);
+      } catch {
+        setMonthlyHours({});
+      }
+    };
+    loadMonthly();
+  }, [yearId]);
 
   useEffect(() => {
     const loadUser = async () => {
@@ -207,6 +229,30 @@ export default function DashboardPage() {
     billedPct: totals.worked ? Math.round((totals.billed / totals.worked) * 1000) / 10 : 0,
   };
 
+  const attendancePct = (() => {
+    const fy = years.find(y => y.id === yearId);
+    if (!fy) return 0;
+    
+    let cutoffIndex = 12;
+    const now = new Date();
+    const start = new Date(fy.start_date); 
+    const end = new Date(fy.end_date);
+    
+    if (now < start) cutoffIndex = 0;
+    else if (now > end) cutoffIndex = 12;
+    else cutoffIndex = ((now.getUTCMonth() + 12) - 8) % 12;
+
+    let availSum = 0;
+    let workedSum = 0;
+    for (let i = 0; i < cutoffIndex; i++) {
+      availSum += (monthlyHours[i] ?? 160);
+      const e = entries.find(x => x.month_index === i);
+      workedSum += (e?.worked || 0);
+    }
+    
+    return availSum > 0 ? Math.round((workedSum / availSum) * 1000) / 10 : 0;
+  })();
+
   if (loading) return <p className="p-6">Loading...</p>;
   if (error) return <p className="p-6 text-red-600">{error}</p>;
   if (!employee) return <p className="p-6">Not found</p>;
@@ -295,19 +341,10 @@ export default function DashboardPage() {
                 <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Attendance</h3>
                 <div className="flex-1 flex flex-col justify-center">
                   <div className={`text-3xl font-bold ${getMetricColor(
-                    (() => {
-                      const fy = years.find(y => y.id === yearId);
-                      const avail = Number(fy?.available_hours ?? 0);
-                      return avail > 0 ? Math.round((totals.worked / avail) * 1000) / 10 : 0;
-                    })(),
+                    attendancePct,
                     goals?.personal_attendance_pct_goal ?? 0
                   )}`}>
-                    {(() => {
-                      const fy = years.find(y => y.id === yearId);
-                      const avail = Number(fy?.available_hours ?? 0);
-                      const pct = avail > 0 ? Math.round((totals.worked / avail) * 1000) / 10 : 0;
-                      return `${pct}%`;
-                    })()}
+                    {attendancePct}%
                   </div>
                 </div>
               </div>

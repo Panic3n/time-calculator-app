@@ -6,7 +6,7 @@ import { supabaseBrowser } from "@/lib/supabaseClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { fiscalMonths } from "@/lib/fiscal";
 
-type FiscalYear = { id: string; label: string; available_hours: number | null };
+type FiscalYear = { id: string; label: string; start_date: string; end_date: string; available_hours: number | null };
 
 type TeamGoals = {
   id?: string;
@@ -32,8 +32,30 @@ export default function TeamGoalsPage() {
   const [feedbackScore, setFeedbackScore] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
 
   const months = fiscalMonths();
+
+  // Load monthly available hours
+  useEffect(() => {
+    const loadMonthly = async () => {
+      if (!yearId) { setMonthlyHours({}); return; }
+      try {
+        const { data } = await supabaseBrowser
+          .from("monthly_available_hours")
+          .select("month_index, available_hours")
+          .eq("fiscal_year_id", yearId);
+        const map: Record<number, number> = {};
+        (data || []).forEach((r: any) => {
+          map[r.month_index] = Number(r.available_hours || 0);
+        });
+        setMonthlyHours(map);
+      } catch {
+        setMonthlyHours({});
+      }
+    };
+    loadMonthly();
+  }, [yearId]);
 
   useEffect(() => {
     const loadUserAndYears = async () => {
@@ -70,7 +92,7 @@ export default function TeamGoalsPage() {
 
         const { data: fys, error: fyErr } = await supabaseBrowser
           .from("fiscal_years")
-          .select("id, label, available_hours")
+          .select("id, label, available_hours, start_date, end_date")
           .order("start_date", { ascending: false });
         if (fyErr) throw fyErr;
         setYears(fys as any);
@@ -195,10 +217,27 @@ export default function TeamGoalsPage() {
 
   const attendancePct = useMemo(() => {
     const fy = years.find((y) => y.id === yearId);
-    const avail = Number(fy?.available_hours ?? 0);
-    if (!avail) return 0;
-    return Math.round(((personalTotals.worked || 0) / avail) * 1000) / 10;
-  }, [years, yearId, personalTotals.worked]);
+    if (!fy) return 0;
+    
+    let cutoffIndex = 12;
+    const now = new Date();
+    const start = new Date(fy.start_date); 
+    const end = new Date(fy.end_date);
+    
+    if (now < start) cutoffIndex = 0;
+    else if (now > end) cutoffIndex = 12;
+    else cutoffIndex = ((now.getUTCMonth() + 12) - 8) % 12;
+
+    let availSum = 0;
+    let workedSum = 0;
+    for (let i = 0; i < cutoffIndex; i++) {
+      availSum += (monthlyHours[i] ?? 160);
+      const e = entriesPersonal.find(x => x.month_index === i);
+      workedSum += Number(e?.worked || 0);
+    }
+    
+    return availSum > 0 ? Math.round((workedSum / availSum) * 1000) / 10 : 0;
+  }, [years, yearId, entriesPersonal, monthlyHours]);
 
   // For avg billed rate we reuse the same idea as Budgets: TB / billed hours, if available
   const [avgRate, setAvgRate] = useState<number>(0);

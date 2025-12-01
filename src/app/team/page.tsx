@@ -20,12 +20,15 @@ import {
 } from "recharts";
 
 type Employee = { id: string; name: string; role: string | null };
-type FiscalYear = { id: string; label: string; available_hours: number | null };
+type FiscalYear = { id: string; label: string; available_hours: number | null; start_date?: string; end_date?: string };
 type MonthEntry = { employee_id: string; fiscal_year_id: string; month_index: number; worked: number; logged: number; billed: number };
 type TeamGoals = {
   personal_billed_pct_goal: number;
   personal_logged_pct_goal: number;
   personal_attendance_pct_goal: number;
+  team_billable_hours_goal: number;
+  department_tb_goal: number;
+  team_avg_rate_goal: number;
 };
 
 type Row = {
@@ -38,6 +41,7 @@ type Row = {
   pctLogged: number;
   pctBilled: number;
   attendancePct: number;
+  billedVsGoalPct: number;
 };
 
 function getMetricColor(value: number, goal: number): string {
@@ -61,6 +65,28 @@ export default function TeamPage() {
   const [error, setError] = useState<string | null>(null);
   const [goals, setGoals] = useState<TeamGoals | null>(null);
   const [selected, setSelected] = useState<Record<string, boolean>>({}); // employee_id -> included (from DB)
+  const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
+
+  // Load monthly available hours
+  useEffect(() => {
+    const loadMonthly = async () => {
+      if (!yearId) { setMonthlyHours({}); return; }
+      try {
+        const { data } = await supabaseBrowser
+          .from("monthly_available_hours")
+          .select("month_index, available_hours")
+          .eq("fiscal_year_id", yearId);
+        const map: Record<number, number> = {};
+        (data || []).forEach((r: any) => {
+          map[r.month_index] = Number(r.available_hours || 0);
+        });
+        setMonthlyHours(map);
+      } catch {
+        setMonthlyHours({});
+      }
+    };
+    loadMonthly();
+  }, [yearId]);
 
   // CSV import state
   const [showImport, setShowImport] = useState(false);
@@ -142,7 +168,7 @@ export default function TeamPage() {
 
         const [{ data: emps, error: e1 }, { data: fys, error: e2 }] = await Promise.all([
           supabaseBrowser.from("employees").select("id, name, role").order("name"),
-          supabaseBrowser.from("fiscal_years").select("id, label, available_hours").order("start_date", { ascending: false }),
+          supabaseBrowser.from("fiscal_years").select("id, label, available_hours, start_date, end_date").order("start_date", { ascending: false }),
         ]);
         if (e1) throw e1;
         if (e2) throw e2;
@@ -184,15 +210,29 @@ export default function TeamPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("team_goals")
-          .select("personal_billed_pct_goal, personal_logged_pct_goal, personal_attendance_pct_goal")
+          .select("personal_billed_pct_goal, personal_logged_pct_goal, personal_attendance_pct_goal, team_billable_hours_goal, department_tb_goal, team_avg_rate_goal")
           .eq("fiscal_year_id", yearId)
           .limit(1);
         if (error) throw error;
         const row = (data as any[])?.[0];
-        setGoals(row || { personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0 });
+        setGoals(row || { 
+          personal_billed_pct_goal: 0, 
+          personal_logged_pct_goal: 0, 
+          personal_attendance_pct_goal: 0, 
+          team_billable_hours_goal: 0,
+          department_tb_goal: 0,
+          team_avg_rate_goal: 0
+        });
       } catch (e: any) {
         // Goals not found, use defaults
-        setGoals({ personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0 });
+        setGoals({ 
+          personal_billed_pct_goal: 0, 
+          personal_logged_pct_goal: 0, 
+          personal_attendance_pct_goal: 0, 
+          team_billable_hours_goal: 0,
+          department_tb_goal: 0,
+          team_avg_rate_goal: 0
+        });
       }
     };
     loadGoals();
@@ -433,26 +473,78 @@ export default function TeamPage() {
 
   const rows: Row[] = useMemo(() => {
     const fy = years.find((y) => y.id === yearId);
-    const available = Number(fy?.available_hours ?? 0);
-    const byEmp: Record<string, { worked: number; logged: number; billed: number }> = {};
+    // Determine cutoff index for "closed months"
+    let cutoffIndex = 12; // Default to all months (past year)
+    if (fy) {
+      const now = new Date();
+      const start = fy.start_date ? new Date(fy.start_date) : null;
+      const end = fy.end_date ? new Date(fy.end_date) : null;
+      
+      // Fallback if dates missing: parse label (e.g. "2024/2025")
+      let y1 = 0, y2 = 0;
+      if (!start || !end) {
+        const parts = (fy.label || "").split("/");
+        y1 = Number(parts[0]);
+        y2 = Number(parts[1]);
+      }
+      const startDate = start || new Date(Date.UTC(y1, 8, 1)); // Sep 1
+      const endDate = end || new Date(Date.UTC(y2, 7, 31, 23, 59, 59)); // Aug 31
+
+      if (now < startDate) {
+        cutoffIndex = 0; // Future year
+      } else if (now > endDate) {
+        cutoffIndex = 12; // Past year
+      } else {
+        // Current year: include months < current month index
+        // Sep=0, Oct=1...
+        // Formula: ((currentMonth + 12) - 8) % 12
+        // e.g. Sep(8) -> 0. Oct(9) -> 1.
+        const currentMonth = now.getUTCMonth(); // 0-11 (Jan=0, Sep=8)
+        // If today is Dec 1 (Month 11). Index = (11+12-8)%12 = 3.
+        // We want < 3 (0,1,2). Correct.
+        cutoffIndex = ((currentMonth + 12) - 8) % 12;
+      }
+    }
+
+    // Calculate available hours for attendance (sum of monthly hours < cutoff)
+    let attendanceAvailable = 0;
+    for (let i = 0; i < cutoffIndex; i++) {
+      attendanceAvailable += (monthlyHours[i] ?? 160);
+    }
+
+    // Calculate share of goal
+    const agentCount = Object.keys(selected).length;
+    const teamBillableGoal = 
+       goals?.department_tb_goal && goals.team_avg_rate_goal && goals.team_avg_rate_goal > 0
+       ? goals.department_tb_goal / goals.team_avg_rate_goal
+       : goals?.team_billable_hours_goal || 0;
+    const shareOfGoal = agentCount > 0 ? teamBillableGoal / agentCount : 0;
+
+    const byEmp: Record<string, { worked: number; logged: number; billed: number; attendanceWorked: number }> = {};
     for (const e of entries) {
       if (!selected[e.employee_id]) continue;
-      const b = (byEmp[e.employee_id] ||= { worked: 0, logged: 0, billed: 0 });
-      b.worked += Number(e.worked || 0);
+      const b = (byEmp[e.employee_id] ||= { worked: 0, logged: 0, billed: 0, attendanceWorked: 0 });
+      const w = Number(e.worked || 0);
+      b.worked += w;
       b.logged += Number(e.logged || 0);
       b.billed += Number(e.billed || 0);
+      
+      if (e.month_index < cutoffIndex) {
+        b.attendanceWorked += w;
+      }
     }
     return employees.filter(emp => selected[emp.id]).map((emp) => {
-      const agg = byEmp[emp.id] || { worked: 0, logged: 0, billed: 0 };
+      const agg = byEmp[emp.id] || { worked: 0, logged: 0, billed: 0, attendanceWorked: 0 };
       const pctLogged = agg.worked ? Math.round((agg.logged / agg.worked) * 1000) / 10 : 0;
       const pctBilled = agg.worked ? Math.round((agg.billed / agg.worked) * 1000) / 10 : 0;
-      const attendancePct = available > 0 ? Math.round((agg.worked / available) * 1000) / 10 : 0;
-      return { id: emp.id, name: emp.name, role: emp.role, worked: agg.worked, logged: agg.logged, billed: agg.billed, pctLogged, pctBilled, attendancePct };
+      const attendancePct = attendanceAvailable > 0 ? Math.round((agg.attendanceWorked / attendanceAvailable) * 1000) / 10 : 0;
+      const billedVsGoalPct = shareOfGoal > 0 ? Math.round((agg.billed / shareOfGoal) * 1000) / 10 : 0;
+      return { id: emp.id, name: emp.name, role: emp.role, worked: agg.worked, logged: agg.logged, billed: agg.billed, pctLogged, pctBilled, attendancePct, billedVsGoalPct };
     });
-  }, [employees, entries, years, yearId, selected]);
+  }, [employees, entries, years, yearId, selected, monthlyHours, goals]);
 
   const teamAverages = useMemo(() => {
-    if (rows.length === 0) return { pctLogged: 0, pctBilled: 0, attendancePct: 0 };
+    if (rows.length === 0) return { pctLogged: 0, pctBilled: 0, attendancePct: 0, billedVsGoalPct: 0 };
     // Calculate from totals for logged and billed
     const totalWorked = rows.reduce((acc, r) => acc + r.worked, 0);
     const totalLogged = rows.reduce((acc, r) => acc + r.logged, 0);
@@ -465,8 +557,16 @@ export default function TeamPage() {
     const attendancePct = attendanceValues.length % 2 !== 0
       ? attendanceValues[mid]
       : Math.round(((attendanceValues[mid - 1] + attendanceValues[mid]) / 2) * 10) / 10;
-    return { pctLogged, pctBilled, attendancePct };
-  }, [rows, years, yearId]);
+    
+    // Team billed vs goal
+    const totalGoal = 
+       goals?.department_tb_goal && goals.team_avg_rate_goal && goals.team_avg_rate_goal > 0
+       ? goals.department_tb_goal / goals.team_avg_rate_goal
+       : goals?.team_billable_hours_goal || 0;
+    const billedVsGoalPct = totalGoal > 0 ? Math.round((totalBilled / totalGoal) * 1000) / 10 : 0;
+
+    return { pctLogged, pctBilled, attendancePct, billedVsGoalPct };
+  }, [rows, years, yearId, goals]);
 
   const monthlyChartData = useMemo(() => {
     const months = fiscalMonths();
@@ -620,7 +720,7 @@ export default function TeamPage() {
                         </div>
                       </div>
 
-                      <div className="pt-2 border-t border-[var(--color-surface)]/40 grid grid-cols-3 gap-3 text-sm">
+                      <div className="pt-2 border-t border-[var(--color-surface)]/40 grid grid-cols-2 gap-3 text-sm">
                         <div>
                           <p className="text-[var(--color-text)]/60 text-xs font-medium">% Logged</p>
                           <p className={`text-lg font-bold ${getMetricColor(r.pctLogged, goals?.personal_logged_pct_goal ?? 0)}`}>{r.pctLogged}%</p>
@@ -633,6 +733,10 @@ export default function TeamPage() {
                           <p className="text-[var(--color-text)]/60 text-xs font-medium">Attendance</p>
                           <p className={`text-lg font-bold ${getMetricColor(r.attendancePct, goals?.personal_attendance_pct_goal ?? 0)}`}>{r.attendancePct}%</p>
                         </div>
+                        <div>
+                          <p className="text-[var(--color-text)]/60 text-xs font-medium">Billable vs Share of Goal</p>
+                          <p className={`text-lg font-bold ${getMetricColor(r.billedVsGoalPct, 100)}`}>{r.billedVsGoalPct}%</p>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -641,7 +745,7 @@ export default function TeamPage() {
 
               <div className="mt-8 p-6 rounded-2xl bg-[var(--color-surface)]/20 border border-[var(--color-surface)]/40 backdrop-blur-sm">
                 <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">Team Averages</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
                   <div>
                     <p className="text-[var(--color-text)]/60 text-xs font-medium mb-1">% Logged</p>
                     <p className={`text-2xl font-bold ${getMetricColor(teamAverages.pctLogged, goals?.personal_logged_pct_goal ?? 0)}`}>{teamAverages.pctLogged}%</p>
@@ -651,8 +755,12 @@ export default function TeamPage() {
                     <p className={`text-2xl font-bold ${getMetricColor(teamAverages.pctBilled, goals?.personal_billed_pct_goal ?? 0)}`}>{teamAverages.pctBilled}%</p>
                   </div>
                   <div>
-                    <p className="text-[var(--color-text)]/60 text-xs font-medium mb-1">Attendance %</p>
+                    <p className="text-xs text-[var(--color-text)]/60 font-medium mb-1">Attendance</p>
                     <p className={`text-2xl font-bold ${getMetricColor(teamAverages.attendancePct, goals?.personal_attendance_pct_goal ?? 0)}`}>{teamAverages.attendancePct}%</p>
+                  </div>
+                  <div>
+                    <p className="text-[var(--color-text)]/60 text-xs font-medium mb-1">Billable vs Goal</p>
+                    <p className={`text-2xl font-bold ${getMetricColor(teamAverages.billedVsGoalPct, 100)}`}>{teamAverages.billedVsGoalPct}%</p>
                   </div>
                 </div>
               </div>

@@ -161,6 +161,11 @@ export async function POST(req: NextRequest) {
     const agg: Record<string, Totals> = {};
     // per-charge-type billed aggregation
     const aggTypes: Record<string, number> = {};
+    
+    // Daily aggregation for Worked Hours (Start -> Finish - Logged Breaks)
+    // Key: "empId:dateOnly" -> { start: number, end: number, breaks: number, monthIdx: number }
+    const dailyAgg: Record<string, { start: number; end: number; breaks: number; empId: string; monthIdx: number }> = {};
+
     // Track which agent+date combinations we've already added worked hours for (to avoid duplicates)
     let readRows = 0;
     for (const ev of events) {
@@ -257,6 +262,38 @@ export async function POST(req: NextRequest) {
         const tkey = `${empId}:${idx}:${ct}`;
         aggTypes[tkey] = (aggTypes[tkey] || 0) + billable;
       }
+
+      // Update Daily Aggregation for Worked Hours
+      const startVal = pick<string>(ev, ["start_date", "startdate", "startDate"]);
+      const endVal = pick<string>(ev, ["end_date", "enddate", "endDate"]);
+      if (startVal && endVal) {
+        const s = new Date(startVal).getTime();
+        const e = new Date(endVal).getTime();
+        if (!isNaN(s) && !isNaN(e)) {
+          const dayKey = `${empId}:${dateOnly}`;
+          const d = (dailyAgg[dayKey] ||= { start: Infinity, end: -Infinity, breaks: 0, empId, monthIdx: idx });
+          if (s < d.start) d.start = s;
+          if (e > d.end) d.end = e;
+          
+          if (isExcludedByBreak) {
+             d.breaks += raw;
+          }
+        }
+      }
+    }
+
+    // Sum up daily worked hours into monthly totals
+    for (const d of Object.values(dailyAgg)) {
+      if (d.start === Infinity || d.end === -Infinity) continue;
+      const spanMs = d.end - d.start;
+      if (spanMs < 0) continue;
+      const spanHours = spanMs / (1000 * 60 * 60);
+      // worked = (Finish - Start) - LoggedBreaks
+      const w = Math.max(0, spanHours - d.breaks);
+      
+      const key = `${d.empId}:${d.monthIdx}`;
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
+      cur.worked += w;
     }
 
     // 5) Upsert into month_entries
@@ -286,7 +323,7 @@ export async function POST(req: NextRequest) {
         month_index: idx,
         logged: Math.round(totals.logged * 100) / 100,
         billed: Math.round(totals.billed * 100) / 100,
-        worked: ex?.worked ?? 0, // Preserve existing manual worked hours (do not overwrite with 0 or auto-calc)
+        worked: Math.round(totals.worked * 100) / 100,
       };
       return base;
     });

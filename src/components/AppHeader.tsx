@@ -9,8 +9,13 @@ import { supabaseBrowser } from "@/lib/supabaseClient";
 const baseLinks = [
   { href: "/", label: "Home" },
   { href: "/dashboard", label: "Dashboard" },
-  { href: "/team", label: "Team" },
   { href: "/team-goals", label: "Team goals" },
+];
+
+const adminLinks = [
+  ...baseLinks,
+  { href: "/team", label: "Team" },
+  { href: "/admin", label: "Admin" },
 ];
 
 const employeeLinks = [
@@ -23,30 +28,44 @@ export function AppHeader() {
   const router = useRouter();
   const [isAdmin, setIsAdmin] = useState<boolean>(false);
   const [email, setEmail] = useState<string>("");
+  const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const load = async () => {
-      try {
-        // Session and admin
-        const { data: sess } = await supabaseBrowser.auth.getSession();
-        const uid = sess?.session?.user?.id;
-        setEmail(sess?.session?.user?.email || "");
-        if (uid) {
-          const { data: prof } = await supabaseBrowser
-            .from("app_profiles")
-            .select("is_admin")
-            .eq("user_id", uid)
-            .single();
-          setIsAdmin(Boolean(prof?.is_admin));
-        } else {
-          setIsAdmin(false);
-        }
-      } catch {
+  const load = async () => {
+    try {
+      // Session and admin
+      const { data: sess } = await supabaseBrowser.auth.getSession();
+      const uid = sess?.session?.user?.id;
+      setEmail(sess?.session?.user?.email || "");
+      if (uid) {
+        const { data: prof } = await supabaseBrowser
+          .from("app_profiles")
+          .select("is_admin")
+          .eq("user_id", uid)
+          .single();
+        setIsAdmin(Boolean(prof?.is_admin));
+      } else {
         setIsAdmin(false);
       }
-    };
+    } catch {
+      setIsAdmin(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
     load();
-  }, []);
+    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange(() => {
+      load();
+      router.refresh();
+    });
+    return () => subscription.unsubscribe();
+  }, [router]);
+
+  const handleNav = (href: string) => {
+    router.push(href);
+    router.refresh();
+  };
 
   return (
     <header className="sticky top-0 z-40 border-b border-[var(--color-surface)] bg-[var(--color-bg)]/95 backdrop-blur supports-[backdrop-filter]:bg-[var(--color-bg)]/70">
@@ -56,14 +75,14 @@ export function AppHeader() {
           <span className="font-semibold">Time Calculator</span>
         </div>
         <nav className="flex items-center gap-1">
-          {email ? (
+          {!loading && (email ? (
             isAdmin ? (
-              [...baseLinks, { href: "/admin", label: "Admin" }].map((l) => (
+              adminLinks.map((l) => (
                 <Button
                   key={l.href}
                   variant={pathname === l.href ? "default" : "ghost"}
                   className={clsx("h-8 px-3", pathname === l.href ? "" : "text-[var(--color-text)]/80")}
-                  onClick={() => router.push(l.href)}
+                  onClick={() => handleNav(l.href)}
                 >
                   {l.label}
                 </Button>
@@ -74,7 +93,7 @@ export function AppHeader() {
                   key={l.href}
                   variant={pathname === l.href ? "default" : "ghost"}
                   className={clsx("h-8 px-3", pathname === l.href ? "" : "text-[var(--color-text)]/80")}
-                  onClick={() => router.push(l.href)}
+                  onClick={() => handleNav(l.href)}
                 >
                   {l.label}
                 </Button>
@@ -86,32 +105,32 @@ export function AppHeader() {
                 key={l.href}
                 variant={pathname === l.href ? "default" : "ghost"}
                 className={clsx("h-8 px-3", pathname === l.href ? "" : "text-[var(--color-text)]/80")}
-                onClick={() => router.push(l.href)}
+                onClick={() => handleNav(l.href)}
               >
                 {l.label}
               </Button>
             ))
-          )}
+          ))}
         </nav>
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2">
-            {email ? (
+            {!loading && (email ? (
               <>
                 <span className="text-xs text-[var(--color-text)]/70">{email}</span>
                 {!isAdmin && (
                   <Button 
                     variant="outline" 
                     className="h-8 px-2 text-xs" 
-                    onClick={()=> router.push("/admin-login")}
+                    onClick={()=> handleNav("/admin-login")}
                   >
                     Admin
                   </Button>
                 )}
-                <Button variant="ghost" className="h-8 px-2" onClick={async ()=>{ await supabaseBrowser.auth.signOut(); router.refresh(); }}>Sign out</Button>
+                <Button variant="ghost" className="h-8 px-2" onClick={async ()=>{ await supabaseBrowser.auth.signOut(); }}>Sign out</Button>
               </>
             ) : (
-              <Button className="h-8 px-2" onClick={()=> router.push("/auth")}>Sign in</Button>
-            )}
+              <Button className="h-8 px-2" onClick={()=> handleNav("/auth")}>Sign in</Button>
+            ))}
           </div>
         </div>
       </div>
