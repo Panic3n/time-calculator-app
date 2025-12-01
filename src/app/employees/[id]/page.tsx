@@ -7,7 +7,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Separator } from "@/components/ui/separator";
 import { fiscalMonths } from "@/lib/fiscal";
 import {
   LineChart,
@@ -32,10 +31,6 @@ type MonthEntry = {
   billed: number;
 };
 
-function toNumber(val: string): number {
-  const n = Number(val);
-  return Number.isFinite(n) ? n : 0;
-}
 
 export default function EmployeeDetailPage() {
   const router = useRouter();
@@ -99,7 +94,7 @@ export default function EmployeeDetailPage() {
       const billedPct = worked ? Math.round((billed / worked) * 1000) / 10 : 0;
       return { name: m.label, loggedPct, billedPct };
     });
-  }, [entries]);
+  }, [entries, months]);
 
   const totals = useMemo(() => {
     const sum = entries.reduce(
@@ -136,11 +131,12 @@ export default function EmployeeDetailPage() {
           .select("id, label, start_date, end_date, available_hours")
           .order("start_date", { ascending: false });
         if (fyErr) throw fyErr;
-        setYears(fya as any);
-        const preferred = (fya as any[])[0]?.id as string | undefined;
+        setYears((fya as FiscalYear[]) || []);
+        const preferred = ((fya as FiscalYear[]) || [])[0]?.id as string | undefined;
         if (preferred) setYearId(preferred);
-      } catch (e: any) {
-        setError(e?.message ?? "Failed to load employee");
+      } catch (err: unknown) {
+        const error = err as { message?: string };
+        setError(error?.message ?? "Failed to load employee");
       } finally {
         setLoading(false);
       }
@@ -159,7 +155,9 @@ export default function EmployeeDetailPage() {
           const row = (json.mappings as any[]).find((r) => r.employee_id === employeeId);
           if (row?.agent_id) setAgentId(String(row.agent_id));
         }
-      } catch {}
+      } catch {
+        // Silently fail if agent map cannot be loaded
+      }
     };
     loadMap();
   }, [employeeId]);
@@ -176,8 +174,9 @@ export default function EmployeeDetailPage() {
       const json = await res.json();
       if (!res.ok || json?.ok === false) throw new Error(json?.error || "Failed to save agent id");
       alert("Halo Agent ID saved");
-    } catch (e: any) {
-      alert(e?.message || "Failed to save");
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      alert(error?.message || "Failed to save");
     } finally {
       setSavingAgent(false);
     }
@@ -230,7 +229,7 @@ export default function EmployeeDetailPage() {
       setYearBilledText(decimalToHM(totalBilled));
     };
     loadEntries();
-  }, [employeeId, yearId]);
+  }, [employeeId, yearId, months]);
 
   const updateEntry = (idx: number, patch: Partial<MonthEntry>) => {
     setEntries((list) => list.map((e) => (e.month_index === idx ? { ...e, ...patch } : e)));
@@ -255,9 +254,10 @@ export default function EmployeeDetailPage() {
         .upsert(payload, { onConflict: "employee_id,fiscal_year_id,month_index" })
         .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed");
       if (error) throw error;
-      setEntries(data as MonthEntry[]);
-    } catch (e: any) {
-      alert(e?.message ?? "Failed to save entries");
+      setEntries((data as MonthEntry[]) || []);
+    } catch (err: unknown) {
+      const error = err as { message?: string };
+      alert(error?.message ?? "Failed to save entries");
     } finally {
       setSaving(false);
     }
@@ -382,7 +382,7 @@ export default function EmployeeDetailPage() {
           <Card>
             <CardHeader>
               <CardTitle>Edit Mode</CardTitle>
-              <CardDescription>Choose how to enter this year's values</CardDescription>
+              <CardDescription>Choose how to enter this year&apos;s values</CardDescription>
             </CardHeader>
             <CardContent className="flex items-center gap-3">
               <Button variant={editMode === 'month' ? 'default' : 'outline'} onClick={() => setEditMode('month')}>Month-by-month</Button>
