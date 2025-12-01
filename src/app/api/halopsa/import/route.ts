@@ -108,15 +108,35 @@ export async function POST(req: NextRequest) {
     // 3b) Also fetch Timesheet for work_hours data (daily summary with auto-corrected hours)
     const timesheetData: any[] = await haloFetch("Timesheet", { query });
     
-    // First pass: collect all agent IDs that have actual time entries (not agent+date, just agent IDs)
+    // First pass: collect all agent IDs that have actual time entries
     const agentsWithEntries = new Set<string>();
+    // Also collect actual break hours per agent per day from TimesheetEvent
+    const actualBreaksMap: Record<string, number> = {}; // key: "agentId:YYYY-MM-DD"
+    
     for (const ev of events) {
       const agentId = `${pick<any>(ev, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
       if (agentId) agentsWithEntries.add(agentId);
+      
+      // Collect actual break hours
+      const dateVal = pick<string>(ev, ["day", "date", "entryDate", "start_date", "end_date", "created_at"]) || "";
+      if (dateVal) {
+        const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+        const mapKey = `${agentId}:${dateStr}`;
+        
+        // Check if this is a break entry
+        const breakTypeRaw = pick<any>(ev, ["break_type", "breakType"]);
+        const breakTypeNum = Number(breakTypeRaw);
+        const isBreak = Number.isFinite(breakTypeNum) && breakTypeNum > 0;
+        
+        if (isBreak) {
+          const breakHours = Number(pick<any>(ev, ["timeTakenHours", "rawTime", "raw_time", "timeTaken", "time_taken", "timetaken"]) ?? 0);
+          actualBreaksMap[mapKey] = (actualBreaksMap[mapKey] || 0) + breakHours;
+        }
+      }
     }
     
-    // Build a map of work_hours by agent_id and date for merging
-    // Only include work_hours for agent+date combinations that have actual time entries
+    // Build a map of worked hours by agent_id and date
+    // Calculate from start/finish times minus actual breaks
     const workedHoursMap: Record<string, number> = {}; // key: "agentId:YYYY-MM-DD"
     for (const ts of timesheetData) {
       const agentId = `${pick<any>(ts, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
@@ -124,14 +144,28 @@ export async function POST(req: NextRequest) {
       if (agentId && dateVal) {
         const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
         const mapKey = `${agentId}:${dateStr}`;
-        // Only include worked hours for agents that have time entries (but include all their days)
+        // Only include worked hours for agents that have time entries
         if (!agentsWithEntries.has(agentId)) continue;
         
-        // Use work_hours field from Halo (already calculated correctly by Halo)
-        const worked = Number(pick<any>(ts, ["work_hours", "workHours", "worked_hours", "workedHours"]) ?? 0);
+        // Calculate from start/finish times
+        const startTime = pick<string>(ts, ["estimated_start_time", "estimatedStartTime", "start_time", "startTime"]);
+        const endTime = pick<string>(ts, ["estimated_end_time", "estimatedEndTime", "end_time", "endTime"]);
+        
+        let worked = 0;
+        if (startTime && endTime) {
+          const start = new Date(startTime);
+          const end = new Date(endTime);
+          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+            const diffMs = end.getTime() - start.getTime();
+            const diffHours = diffMs / (1000 * 60 * 60);
+            // Subtract actual breaks taken (not allowed breaks)
+            const actualBreaks = actualBreaksMap[mapKey] || 0;
+            worked = Math.max(0, diffHours - actualBreaks);
+          }
+        }
         
         if (worked > 0) {
-          workedHoursMap[mapKey] = (workedHoursMap[mapKey] || 0) + worked;
+          workedHoursMap[mapKey] = worked;
         }
       }
     }
