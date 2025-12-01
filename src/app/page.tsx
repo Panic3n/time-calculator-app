@@ -62,19 +62,24 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] p-6">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-[var(--color-text)] mb-8">Welcome</h1>
+    <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
+        <div className="space-y-2">
+          <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">Welcome</h1>
+          <p className="text-sm text-[var(--color-text)]/60 font-medium">Stay informed with company news and announcements</p>
+          <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
+        </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           {/* Company News Section */}
-          <div>
-            <Card className="h-full flex flex-col">
-              <CardHeader>
-                <CardTitle>Company News</CardTitle>
-                <CardDescription>Latest updates from the knowledge base</CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1">
+          <div className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-8 space-y-4 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+              <div>
+                <h2 className="text-xl font-bold text-[var(--color-text)]">Company News</h2>
+                <p className="text-sm text-[var(--color-text)]/60 font-medium mt-1">Latest updates from the knowledge base</p>
+              </div>
+              <div className="flex-1">
                 {newsLoading ? (
                   <p className="text-sm text-[var(--color-text)]/60">Loading news...</p>
                 ) : news.length > 0 ? (
@@ -85,12 +90,12 @@ export default function Home() {
                           href={article.url}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="group"
+                          className="group/link"
                         >
-                          <h3 className="font-semibold text-[var(--color-text)] group-hover:text-[var(--color-primary)] transition-colors">
-                            {article.title} →
+                          <h3 className="font-semibold text-[var(--color-text)] group-hover/link:text-[var(--color-primary)] transition-colors line-clamp-2">
+                            {article.title}
                           </h3>
-                          <p className="text-sm text-[var(--color-text)]/70 mt-1">{article.summary}</p>
+                          <p className="text-sm text-[var(--color-text)]/70 mt-1 line-clamp-2">{article.summary}</p>
                         </a>
                       </li>
                     ))}
@@ -98,23 +103,24 @@ export default function Home() {
                 ) : (
                   <p className="text-sm text-[var(--color-text)]/60">No news articles available</p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
 
           {/* Message Board Section */}
-          <div>
-            <Card className="h-full flex flex-col">
-              <CardHeader>
-                <CardTitle>Message Board</CardTitle>
-                <CardDescription>Important announcements</CardDescription>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col">
+          <div className="group relative">
+            <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+            <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-8 space-y-4 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+              <div>
+                <h2 className="text-xl font-bold text-[var(--color-text)]">Message Board</h2>
+                <p className="text-sm text-[var(--color-text)]/60 font-medium mt-1">Important announcements</p>
+              </div>
+              <div className="flex-1 flex flex-col">
                 {messageLoading ? (
                   <p className="text-sm text-[var(--color-text)]/60">Loading message...</p>
                 ) : message ? (
                   <div className="flex flex-col h-full">
-                    <h3 className="font-semibold text-[var(--color-text)] mb-3">{message.title}</h3>
+                    <h3 className="font-semibold text-[var(--color-text)] mb-3 text-lg">{message.title}</h3>
                     <div className="text-sm text-[var(--color-text)]/80 whitespace-pre-wrap flex-1 mb-3">
                       {message.content}
                     </div>
@@ -125,11 +131,11 @@ export default function Home() {
                 ) : (
                   <p className="text-sm text-[var(--color-text)]/60">No message available</p>
                 )}
-              </CardContent>
-            </Card>
+              </div>
+            </div>
           </div>
         </div>
-      </div>
+      </main>
     </div>
   );
 }

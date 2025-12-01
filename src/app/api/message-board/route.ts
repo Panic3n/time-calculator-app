@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
-import { supabaseBrowser } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+// Server-side Supabase client using service role key
+const supabaseServer = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL || "https://placeholder.supabase.co",
+  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "placeholder-key"
+);
 
 export async function GET() {
   try {
-    const { data, error } = await supabaseBrowser
+    const { data, error } = await supabaseServer
       .from("message_board")
       .select("id, title, content, updated_at")
       .order("updated_at", { ascending: false })
@@ -38,7 +44,7 @@ export async function POST(req: NextRequest) {
     }
 
     // Upsert message (keep only one message)
-    const { data, error } = await supabaseBrowser
+    const { data, error } = await supabaseServer
       .from("message_board")
       .upsert(
         {
