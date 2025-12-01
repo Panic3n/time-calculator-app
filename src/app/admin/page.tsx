@@ -30,7 +30,7 @@ export default function AdminPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [years, setYears] = useState<FiscalYear[]>([]);
   const [yearId, setYearId] = useState<string>("");
-  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations">("employees");
+  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board">("employees");
 
   // Employees: create/edit/delete
   const [newEmployee, setNewEmployee] = useState<{ name: string; role: string }>({ name: "", role: "" });
@@ -74,6 +74,11 @@ export default function AdminPage() {
   const [goalsError, setGoalsError] = useState<string | null>(null);
   const [goals, setGoals] = useState<TeamGoals | null>(null);
   const [busyGoalsSave, setBusyGoalsSave] = useState(false);
+
+  // Message board: state
+  const [messageTitle, setMessageTitle] = useState<string>("");
+  const [messageContent, setMessageContent] = useState<string>("");
+  const [messageBusySave, setMessageBusySave] = useState(false);
 
   useEffect(() => {
     const load = async () => {
@@ -609,6 +614,13 @@ export default function AdminPage() {
               className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "calculations" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
             >
               Calculations Guide
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("message-board")}
+              className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "message-board" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
+            >
+              Message Board
             </button>
           </nav>
         </aside>
@@ -1299,6 +1311,58 @@ export default function AdminPage() {
               <div className="text-xs text-[var(--color-text)]/50 text-right">
                 Last updated: November 27, 2025
               </div>
+            </div>
+          )}
+
+          {section === "message-board" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Message Board</CardTitle>
+                  <CardDescription>Edit the message displayed on the home page</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div>
+                    <label className="text-sm block mb-2 font-medium">Title</label>
+                    <Input
+                      value={messageTitle}
+                      onChange={(e) => setMessageTitle(e.target.value)}
+                      placeholder="e.g., Important Announcement"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm block mb-2 font-medium">Message Content</label>
+                    <textarea
+                      value={messageContent}
+                      onChange={(e) => setMessageContent(e.target.value)}
+                      placeholder="Enter your message here..."
+                      className="w-full p-3 rounded-lg border border-[var(--color-text)]/20 bg-[var(--color-surface)] text-[var(--color-text)] focus:outline-none focus:border-[var(--color-primary)]/50 min-h-[200px]"
+                    />
+                  </div>
+                  <Button
+                    onClick={async () => {
+                      setMessageBusySave(true);
+                      try {
+                        const res = await fetch("/api/message-board", {
+                          method: "POST",
+                          headers: { "Content-Type": "application/json" },
+                          body: JSON.stringify({ title: messageTitle, content: messageContent }),
+                        });
+                        if (!res.ok) throw new Error("Failed to save");
+                        alert("Message saved successfully!");
+                      } catch (err: unknown) {
+                        const error = err as { message?: string };
+                        alert(error?.message || "Failed to save message");
+                      } finally {
+                        setMessageBusySave(false);
+                      }
+                    }}
+                    disabled={messageBusySave || !messageTitle || !messageContent}
+                  >
+                    {messageBusySave ? "Saving..." : "Save Message"}
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
           )}
         </main>
