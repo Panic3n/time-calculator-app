@@ -53,6 +53,9 @@ export async function POST(req: NextRequest) {
     let holidayIdCount = 0;
     let holidayIdHours = 0;
     let totalHours = 0;
+    let totalWorkedHours = 0;
+    let workedHoursPresent = 0;
+    let workedHoursGt0 = 0;
 
     for (const ev of events) {
       total++;
@@ -68,6 +71,12 @@ export async function POST(req: NextRequest) {
 
       const hours = Number(pick<any>(ev, ["timeTakenHours", "rawTime", "raw_time", "timeTaken", "time_taken", "timetaken"]) ?? 0) || 0;
       totalHours += hours;
+      
+      const worked = Number(pick<any>(ev, ["work_hours", "workHours", "worked_hours", "workedHours"]) ?? 0) || 0;
+      totalWorkedHours += worked;
+      if (worked > 0) workedHoursGt0 += 1;
+      if (!Number.isNaN(worked)) workedHoursPresent += 1;
+      
       const btype = `${pick<any>(ev, ["break_type", "breakType"]) ?? ""}`.trim().toLowerCase();
       const ctype = `${pick<any>(ev, ["charge_type_name", "chargeTypeName"]) ?? ""}`.trim().toLowerCase();
       const holidayId = Number(pick<any>(ev, ["holiday_id", "holidayId"])) || 0;
@@ -96,6 +105,9 @@ export async function POST(req: NextRequest) {
         amount_gt0_rows: amountGt0,
         total_rows: total,
         total_hours: Math.round(totalHours * 100) / 100,
+        worked_hours_present_rows: workedHoursPresent,
+        worked_hours_gt0_rows: workedHoursGt0,
+        total_worked_hours: Math.round(totalWorkedHours * 100) / 100,
         holiday_id_rows: holidayIdCount,
         holiday_id_hours: Math.round(holidayIdHours * 100) / 100,
       },
