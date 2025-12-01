@@ -156,8 +156,8 @@ export async function POST(req: NextRequest) {
       }
     } catch {}
 
-    // 4) Aggregate per agent + fiscal month (Logged from TimesheetEvent, Billed by charge_type_name)
-    type Totals = { logged: number; billed: number };
+    // 4) Aggregate per agent + fiscal month (Logged from TimesheetEvent, Billed by charge_type_name, Worked from Timesheet)
+    type Totals = { logged: number; billed: number; worked: number };
     const agg: Record<string, Totals> = {};
     // per-charge-type billed aggregation
     const aggTypes: Record<string, number> = {};
@@ -189,6 +189,16 @@ export async function POST(req: NextRequest) {
           "timeTaken",
           "time_taken",
           "timetaken",
+        ]) ?? 0
+      );
+
+      // Worked: pull from Halo Timesheet work_hours field (auto-corrected by Halo)
+      const worked = Number(
+        pick<any>(ev, [
+          "work_hours",
+          "workHours",
+          "worked_hours",
+          "workedHours",
         ]) ?? 0
       );
 
@@ -246,9 +256,10 @@ export async function POST(req: NextRequest) {
       const excluded = isExcludedByCharge || isExcludedByBreak || isExcludedByHolidayId;
       const loggedAdd = raw > 0 && !excluded ? raw : 0;
 
-      const cur = (agg[key] ||= { logged: 0, billed: 0 });
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
+      cur.worked += Number.isFinite(worked) ? worked : 0;
 
       // Per charge type aggregation (store name lowercased for normalization)
       if (billable > 0 && ct) {
@@ -263,10 +274,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, message: "No matching rows to import", readRows, importedRows: 0 }, { status: 200 });
     }
 
-    // Fetch existing to preserve worked
+    // Fetch existing to preserve IDs
     const { data: existing, error: exErr } = await supabaseBrowser
       .from("month_entries")
-      .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed")
+      .select("id, employee_id, fiscal_year_id, month_index")
       .eq("fiscal_year_id", fiscalYearId);
     if (exErr) throw exErr;
     const exMap: Record<string, any> = {};
@@ -284,9 +295,8 @@ export async function POST(req: NextRequest) {
         month_index: idx,
         logged: Math.round(totals.logged * 100) / 100,
         billed: Math.round(totals.billed * 100) / 100,
+        worked: Math.round(totals.worked * 100) / 100,
       };
-      // Always set 'worked': 0 for new rows, preserve existing value for updates
-      base.worked = ex?.worked ?? 0;
       return base;
     });
 
