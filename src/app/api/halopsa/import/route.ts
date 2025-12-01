@@ -128,10 +128,25 @@ export async function POST(req: NextRequest) {
       if (agentId && dateVal) {
         const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
         const mapKey = `${agentId}:${dateStr}`;
-        // Only include work_hours if this agent+date has actual time entries
+        // Only include worked hours if this agent+date has actual time entries
         if (!agentDatesWithEntries.has(mapKey)) continue;
-        // Use work_hours from Timesheet (Halo's auto-corrected worked hours)
-        const worked = Number(pick<any>(ts, ["work_hours", "workHours", "worked_hours", "workedHours"]) ?? 0);
+        
+        // Calculate worked hours from start/finish times minus breaks
+        const startTime = pick<string>(ts, ["estimated_start_time", "estimatedStartTime", "start_time", "startTime"]);
+        const endTime = pick<string>(ts, ["estimated_end_time", "estimatedEndTime", "end_time", "endTime"]);
+        const breakHours = Number(pick<any>(ts, ["allowed_break_hours", "allowedBreakHours", "break_hours", "breakHours"]) ?? 0);
+        
+        let worked = 0;
+        if (startTime && endTime) {
+          const start = new Date(startTime);
+          const end = new Date(endTime);
+          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+            const diffMs = end.getTime() - start.getTime();
+            const diffHours = diffMs / (1000 * 60 * 60);
+            worked = Math.max(0, diffHours - breakHours); // Subtract break hours
+          }
+        }
+        
         workedHoursMap[mapKey] = (workedHoursMap[mapKey] || 0) + worked;
       }
     }
