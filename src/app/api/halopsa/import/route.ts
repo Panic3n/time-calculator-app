@@ -94,7 +94,7 @@ export async function POST(req: NextRequest) {
       if (empId) finalAgentMapByName[a] = empId;
     }
 
-    // 3) Fetch Timesheet from HaloPSA (includes work_hours field)
+    // 3) Fetch TimesheetEvent from HaloPSA (for logged/billed hours)
     // Params supported by Swagger: start_date, end_date, agents, utcoffset
     // Do not filter by 'agents' to avoid missing matches due to naming; rely on server-side mapping instead.
     // const agentNames = Object.keys(finalAgentMapByName);
@@ -103,8 +103,23 @@ export async function POST(req: NextRequest) {
       end_date: options?.to || end,
     } as any;
 
-
-    const events: any[] = await haloFetch("Timesheet", { query });
+    const events: any[] = await haloFetch("TimesheetEvent", { query });
+    
+    // 3b) Also fetch Timesheet for work_hours data (daily summary with auto-corrected hours)
+    const timesheetData: any[] = await haloFetch("Timesheet", { query });
+    
+    // Build a map of work_hours by agent_id and date for merging
+    const workedHoursMap: Record<string, number> = {}; // key: "agentId:YYYY-MM-DD"
+    for (const ts of timesheetData) {
+      const agentId = `${pick<any>(ts, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
+      const dateVal = pick<string>(ts, ["date", "day"]) || "";
+      if (agentId && dateVal) {
+        const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+        const worked = Number(pick<any>(ts, ["work_hours", "workHours", "worked_hours", "workedHours"]) ?? 0);
+        const mapKey = `${agentId}:${dateStr}`;
+        workedHoursMap[mapKey] = (workedHoursMap[mapKey] || 0) + worked;
+      }
+    }
 
     // Load billable charge type allowlist from Supabase if present
     let billableTypeSet: Set<string> | null = null;
@@ -177,7 +192,8 @@ export async function POST(req: NextRequest) {
       const dateVal =
         pick<string>(ev, ["day", "date", "entryDate", "start_date", "end_date", "created_at"]) || "";
       if (!dateVal) continue;
-      const idx = fiscalMonthIndex(dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal);
+      const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+      const idx = fiscalMonthIndex(dateOnly);
       const key = `${empId}:${idx}`;
 
       // Logged: capture ALL time. Treat values as hours.
@@ -192,15 +208,10 @@ export async function POST(req: NextRequest) {
         ]) ?? 0
       );
 
-      // Worked: pull from Halo Timesheet work_hours field (auto-corrected by Halo)
-      const worked = Number(
-        pick<any>(ev, [
-          "work_hours",
-          "workHours",
-          "worked_hours",
-          "workedHours",
-        ]) ?? 0
-      );
+      // Worked: pull from Timesheet work_hours field (auto-corrected by Halo)
+      // Look up in the workedHoursMap using agent_id and date
+      const mapKey = `${agentId}:${dateOnly}`;
+      const worked = workedHoursMap[mapKey] || 0;
 
       // Billed by charge type allowlist (case-insensitive)
       const defaultBillableTypes = new Set([
@@ -259,7 +270,7 @@ export async function POST(req: NextRequest) {
       const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
-      cur.worked += Number.isFinite(worked) ? worked : 0;
+      cur.worked += worked > 0 ? worked : 0;
 
       // Per charge type aggregation (store name lowercased for normalization)
       if (billable > 0 && ct) {
