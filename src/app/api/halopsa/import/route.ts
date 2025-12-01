@@ -101,79 +101,11 @@ export async function POST(req: NextRequest) {
     const query: Record<string, string> = {
       start_date: options?.from || start,
       end_date: options?.to || end,
-      limit: "10000" // Ensure we get all events for the month (pagination not fully implemented yet)
+      limit: "10000" // Ensure we get all events for the month
     } as any;
 
     const events: any[] = await haloFetch("TimesheetEvent", { query });
     
-    // 3b) Also fetch Timesheet for work_hours data (daily summary with auto-corrected hours)
-    const timesheetData: any[] = await haloFetch("Timesheet", { query });
-    
-    // First pass: collect all agent IDs that have actual time entries
-    const agentsWithEntries = new Set<string>();
-    // Also collect actual break hours per agent per day from TimesheetEvent
-    const actualBreaksMap: Record<string, number> = {}; // key: "agentId:YYYY-MM-DD"
-    
-    for (const ev of events) {
-      const agentId = `${pick<any>(ev, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
-      if (agentId) agentsWithEntries.add(agentId);
-      
-      // Collect actual break hours
-      const dateVal = pick<string>(ev, ["day", "date", "entryDate", "start_date", "end_date", "created_at"]) || "";
-      if (dateVal) {
-        const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
-        const mapKey = `${agentId}:${dateStr}`;
-        
-        // Check if this is a break entry
-        const breakTypeRaw = pick<any>(ev, ["break_type", "breakType"]);
-        const breakTypeNum = Number(breakTypeRaw);
-        const isBreak = Number.isFinite(breakTypeNum) && breakTypeNum > 0;
-        
-        if (isBreak) {
-          const breakHours = Number(pick<any>(ev, ["timeTakenHours", "rawTime", "raw_time", "timeTaken", "time_taken", "timetaken"]) ?? 0);
-          actualBreaksMap[mapKey] = (actualBreaksMap[mapKey] || 0) + breakHours;
-        }
-      }
-    }
-    
-    // Build a map of worked hours by agent_id and date
-    // Calculate from start/finish times minus actual breaks
-    const workedHoursMap: Record<string, number> = {}; // key: "agentId:YYYY-MM-DD"
-    for (const ts of timesheetData) {
-      const agentId = `${pick<any>(ts, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
-      const dateVal = pick<string>(ts, ["date", "day"]) || "";
-      if (agentId && dateVal) {
-        const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
-        const mapKey = `${agentId}:${dateStr}`;
-        // Only include worked hours for agents that have time entries
-        if (!agentsWithEntries.has(agentId)) continue;
-        
-        // Calculate from start/finish times
-        const startTime = pick<string>(ts, ["estimated_start_time", "estimatedStartTime", "start_time", "startTime"]);
-        const endTime = pick<string>(ts, ["estimated_end_time", "estimatedEndTime", "end_time", "endTime"]);
-        
-        let worked = 0;
-        if (startTime && endTime) {
-          const start = new Date(startTime);
-          const end = new Date(endTime);
-          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
-            const diffMs = end.getTime() - start.getTime();
-            const diffHours = diffMs / (1000 * 60 * 60);
-            // Calculate deduction: Subtract ONLY actual logged breaks (as per user instruction and matching 151h vs 135h discrepancy)
-            // Previously used Max(actual, allowed), but this resulted in under-calculating by ~15h (approx 1h deduction for 15 days)
-            const actualBreaks = actualBreaksMap[mapKey] || 0;
-            const deduction = actualBreaks;
-            
-            worked = Math.max(0, diffHours - deduction);
-          }
-        }
-        
-        if (worked > 0) {
-          workedHoursMap[mapKey] = worked;
-        }
-      }
-    }
-
     // Load billable charge type allowlist from Supabase if present
     let billableTypeSet: Set<string> | null = null;
     // Load excluded-from-logged charge types from Supabase if present
@@ -230,7 +162,6 @@ export async function POST(req: NextRequest) {
     // per-charge-type billed aggregation
     const aggTypes: Record<string, number> = {};
     // Track which agent+date combinations we've already added worked hours for (to avoid duplicates)
-    const workedHoursAdded: Set<string> = new Set();
     let readRows = 0;
     for (const ev of events) {
       readRows++;
@@ -262,11 +193,6 @@ export async function POST(req: NextRequest) {
           "timetaken",
         ]) ?? 0
       );
-
-      // Worked: pull from Timesheet work_hours field (auto-corrected by Halo)
-      // Look up in the workedHoursMap using agent_id and date
-      const mapKey = `${agentId}:${dateOnly}`;
-      const worked = workedHoursMap[mapKey] || 0;
 
       // Billed by charge type allowlist (case-insensitive)
       const defaultBillableTypes = new Set([
@@ -326,13 +252,6 @@ export async function POST(req: NextRequest) {
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
       
-      // Only add worked hours once per agent+date (to avoid counting same day multiple times)
-      const workedKey = `${agentId}:${dateOnly}`;
-      if (!workedHoursAdded.has(workedKey) && worked > 0) {
-        cur.worked += worked;
-        workedHoursAdded.add(workedKey);
-      }
-
       // Per charge type aggregation (store name lowercased for normalization)
       if (billable > 0 && ct) {
         const tkey = `${empId}:${idx}:${ct}`;
@@ -346,10 +265,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, message: "No matching rows to import", readRows, importedRows: 0 }, { status: 200 });
     }
 
-    // Fetch existing to preserve IDs
+    // Fetch existing to preserve IDs and manually entered worked hours
     const { data: existing, error: exErr } = await supabaseBrowser
       .from("month_entries")
-      .select("id, employee_id, fiscal_year_id, month_index")
+      .select("id, employee_id, fiscal_year_id, month_index, worked")
       .eq("fiscal_year_id", fiscalYearId);
     if (exErr) throw exErr;
     const exMap: Record<string, any> = {};
@@ -367,7 +286,7 @@ export async function POST(req: NextRequest) {
         month_index: idx,
         logged: Math.round(totals.logged * 100) / 100,
         billed: Math.round(totals.billed * 100) / 100,
-        worked: Math.round(totals.worked * 10000) / 10000,  // Higher precision for worked hours to match Halo
+        worked: ex?.worked ?? 0, // Preserve existing manual worked hours (do not overwrite with 0 or auto-calc)
       };
       return base;
     });
