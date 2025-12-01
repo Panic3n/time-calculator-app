@@ -158,9 +158,13 @@ export async function POST(req: NextRequest) {
           if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
             const diffMs = end.getTime() - start.getTime();
             const diffHours = diffMs / (1000 * 60 * 60);
-            // Subtract actual breaks taken (not allowed breaks)
+            // Calculate deduction: Use actual breaks if greater than allowed breaks, otherwise use allowed breaks
+            // This handles cases where breaks aren't logged (use allowed) vs extended breaks (use actual)
             const actualBreaks = actualBreaksMap[mapKey] || 0;
-            worked = Math.max(0, diffHours - actualBreaks);
+            const allowedBreaks = Number(pick<any>(ts, ["allowed_break_hours", "allowedBreakHours", "break_hours", "breakHours"]) ?? 0);
+            const deduction = Math.max(actualBreaks, allowedBreaks);
+            
+            worked = Math.max(0, diffHours - deduction);
           }
         }
         
