@@ -37,11 +37,14 @@ export async function POST(req: NextRequest) {
     const { title, content } = await req.json();
 
     if (!title || !content) {
+      console.warn("Missing title or content:", { title, content });
       return NextResponse.json(
         { error: "title and content are required" },
         { status: 400 }
       );
     }
+
+    console.log("Saving message board:", { title, contentLength: content.length });
 
     // Upsert message (keep only one message)
     const { data, error } = await supabaseServer
@@ -58,12 +61,20 @@ export async function POST(req: NextRequest) {
       .select("id, title, content, updated_at")
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error("Supabase upsert error:", error);
+      throw error;
+    }
 
+    console.log("Message board saved successfully:", data);
     return NextResponse.json({ message: data }, { status: 200 });
   } catch (err: unknown) {
-    const error = err as { message?: string };
-    console.error("Failed to save message board:", error);
+    const error = err as { message?: string; code?: string; details?: string };
+    console.error("Failed to save message board:", {
+      message: error?.message,
+      code: error?.code,
+      details: error?.details,
+    });
     return NextResponse.json(
       { error: error?.message || "Failed to save message" },
       { status: 400 }

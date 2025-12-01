@@ -1348,10 +1348,16 @@ export default function AdminPage() {
                           headers: { "Content-Type": "application/json" },
                           body: JSON.stringify({ title: messageTitle, content: messageContent }),
                         });
-                        if (!res.ok) throw new Error("Failed to save");
+                        const data = await res.json();
+                        if (!res.ok) {
+                          throw new Error(data?.error || `HTTP ${res.status}: Failed to save`);
+                        }
                         alert("Message saved successfully!");
+                        setMessageTitle("");
+                        setMessageContent("");
                       } catch (err: unknown) {
                         const error = err as { message?: string };
+                        console.error("Message board save error:", error);
                         alert(error?.message || "Failed to save message");
                       } finally {
                         setMessageBusySave(false);
