@@ -30,7 +30,7 @@ export default function AdminPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [years, setYears] = useState<FiscalYear[]>([]);
   const [yearId, setYearId] = useState<string>("");
-  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board">("employees");
+  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board" | "halo-sync">("employees");
 
   // Employees: create/edit/delete
   const [newEmployee, setNewEmployee] = useState<{ name: string; role: string }>({ name: "", role: "" });
@@ -79,6 +79,11 @@ export default function AdminPage() {
   const [messageTitle, setMessageTitle] = useState<string>("");
   const [messageContent, setMessageContent] = useState<string>("");
   const [messageBusySave, setMessageBusySave] = useState(false);
+
+  // Halo sync: state
+  const [syncBusy, setSyncBusy] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<string>("");
+  const [agentMap, setAgentMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     const load = async () => {
@@ -621,6 +626,13 @@ export default function AdminPage() {
               className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "message-board" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
             >
               Message Board
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("halo-sync")}
+              className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "halo-sync" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
+            >
+              Halo Sync
             </button>
           </nav>
         </aside>
@@ -1367,6 +1379,80 @@ export default function AdminPage() {
                   >
                     {messageBusySave ? "Saving..." : "Save Message"}
                   </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {section === "halo-sync" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Halo PSA Sync</CardTitle>
+                  <CardDescription>Manually sync timesheet data from Halo PSA</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {syncStatus && (
+                    <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/30 text-sm text-blue-600">
+                      {syncStatus}
+                    </div>
+                  )}
+                  
+                  <div>
+                    <label className="text-sm block mb-2 font-medium">Select Fiscal Year</label>
+                    <select
+                      className="w-full border border-[var(--color-text)]/20 bg-[var(--color-surface)] text-[var(--color-text)] rounded-lg h-10 px-3 text-sm"
+                      value={yearId}
+                      onChange={(e) => setYearId(e.target.value)}
+                    >
+                      <option value="">Choose a fiscal year...</option>
+                      {years.map((y) => (
+                        <option key={y.id} value={y.id}>{y.label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <Button
+                    onClick={async () => {
+                      if (!yearId) {
+                        alert("Please select a fiscal year");
+                        return;
+                      }
+                      setSyncBusy(true);
+                      setSyncStatus("Syncing...");
+                      try {
+                        const agentMapStored = (() => {
+                          try { return JSON.parse(localStorage.getItem('agent_map') || '{}'); } catch { return {}; }
+                        })();
+                        const res = await fetch('/api/halopsa/import', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ fiscalYearId: yearId, agentMap: agentMapStored }),
+                        });
+                        const json = await res.json();
+                        if (!res.ok) throw new Error(json?.error || 'Sync failed');
+                        setSyncStatus(`✅ Sync complete! Imported ${json.importedRows} rows.`);
+                        setTimeout(() => setSyncStatus(""), 5000);
+                      } catch (e: any) {
+                        setSyncStatus(`❌ Error: ${e?.message || 'Failed to sync'}`);
+                      } finally {
+                        setSyncBusy(false);
+                      }
+                    }}
+                    disabled={syncBusy || !yearId}
+                  >
+                    {syncBusy ? "Syncing..." : "Sync Now"}
+                  </Button>
+
+                  <div className="mt-6 pt-6 border-t border-[var(--color-text)]/10">
+                    <h3 className="font-semibold text-[var(--color-text)] mb-3">About Automatic Sync</h3>
+                    <p className="text-sm text-[var(--color-text)]/70 space-y-2">
+                      <div>• Automatic sync runs every hour for the latest fiscal year</div>
+                      <div>• When a new fiscal year is created, it automatically syncs that year</div>
+                      <div>• Manual sync above allows you to sync any fiscal year on demand</div>
+                      <div>• Check server logs for sync status and errors</div>
+                    </p>
+                  </div>
                 </CardContent>
               </Card>
             </div>
