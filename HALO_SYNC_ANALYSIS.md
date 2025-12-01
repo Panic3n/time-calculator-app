@@ -22,11 +22,12 @@
 - **Storage:** `month_entries.billed` column
 - **Detail Storage:** `month_entries_billed_types` (per charge type breakdown)
 
-#### 3. **Worked Hours** ❌ (Currently Manual)
-- **Status:** NOT synced from Halo
-- **Current:** Manually entered in UI (value = 0 by default)
+#### 3. **Worked Hours** ✅
+- **Source:** `work_hours` field from Halo Timesheet
+- **Calculation:** Sum of work hours per employee per month
+- **Auto-Correction:** Halo auto-corrects this field
 - **Storage:** `month_entries.worked` column
-- **Issue:** Preserved during sync, never updated
+- **Status:** NOW synced automatically from Halo
 
 ---
 
@@ -209,55 +210,66 @@ created_at: TIMESTAMP
 1. **Logged Hours** - All time entries (excluding holidays/breaks)
 2. **Billed Hours** - Time with billable charge types
 3. **Charge Type Breakdown** - Per-type billed hours
-
-### Not Synced ❌
-1. **Worked Hours** - Manual entry only
-
-### To Be Added 🚀
-1. **Worked Hours** - Auto-sync from Halo (similar to logged/billed)
+4. **Worked Hours** - Auto-corrected work hours from Halo Timesheet
 
 ---
 
-## 🎯 Implementation Plan
+## 🎯 Implementation - COMPLETE ✅
 
-### Phase 1: Analysis
-- [ ] Identify Halo field for "worked" hours
-- [ ] Understand calculation logic
-- [ ] Verify data availability
+### What Was Done
+- [x] Identified Halo field: `work_hours` from Timesheet endpoint
+- [x] Updated import logic to extract `work_hours`
+- [x] Added worked hours to aggregation (per employee per month)
+- [x] Updated month_entries upsert to sync worked hours
+- [x] Worked hours now update on every sync (not preserved)
 
-### Phase 2: Implementation
-- [ ] Update import logic to sync worked hours
-- [ ] Add worked hours calculation
-- [ ] Update month_entries on sync
+### How It Works
+1. **Extract:** Pull `work_hours` from each Halo Timesheet event
+2. **Aggregate:** Sum work hours per employee per fiscal month
+3. **Sync:** Upsert to `month_entries.worked` column
+4. **Update:** Overwrite on each sync (no manual preservation)
 
-### Phase 3: Testing
-- [ ] Verify worked hours sync correctly
-- [ ] Check calculations
-- [ ] Validate in dashboard
+### Field Mapping
+```
+Halo Timesheet → work_hours
+                 workHours
+                 worked_hours
+                 workedHours
+↓
+Aggregated per employee per month
+↓
+month_entries.worked
+```
 
-### Phase 4: Deployment
-- [ ] Deploy changes
-- [ ] Monitor sync
-- [ ] Verify data accuracy
-
----
-
-## 📞 Questions to Answer
-
-1. **What is the Halo field for "worked" hours?**
-   - Is it a separate field?
-   - Is it calculated from charge types?
-   - What exclusions apply?
-
-2. **How should worked hours be calculated?**
-   - Same as logged (all time)?
-   - Different exclusions?
-   - Specific charge types?
-
-3. **Should worked hours update on sync?**
-   - Yes - overwrite with synced value
-   - Or preserve manual entries?
+### Code Changes
+- **File:** `src/app/api/halopsa/import/route.ts`
+- **Changes:**
+  - Updated `Totals` type to include `worked: number`
+  - Added extraction of `work_hours` field
+  - Added aggregation of worked hours
+  - Updated upsert to set `worked` from synced data
 
 ---
 
-**Status:** Ready for implementation once Halo field is identified! 🚀
+## 📊 Now Syncing
+
+All three metrics are now automatically synced from Halo:
+
+| Metric | Source | Calculation | Storage |
+|--------|--------|-------------|---------|
+| **Logged** | timeTakenHours | All time (excl. holidays/breaks) | month_entries.logged |
+| **Billed** | timeTakenHours + charge_type | Billable types only | month_entries.billed |
+| **Worked** | work_hours | Sum per employee per month | month_entries.worked |
+
+---
+
+## 🚀 Status
+
+**✅ COMPLETE AND DEPLOYED**
+
+All three time metrics are now synced automatically:
+- Logged hours (time tracked)
+- Billed hours (billable time)
+- Worked hours (auto-corrected by Halo)
+
+No manual entry needed for worked hours anymore! 🎉
