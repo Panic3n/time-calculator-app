@@ -12,14 +12,113 @@ function pick<T=any>(obj: any, keys: string[]): T | undefined {
 
 export async function POST(req: NextRequest) {
   try {
-    const { from, to, agentId, limit = 5000, entity = "TimesheetEvent" } = await req.json();
+    const { from, to, agentId, limit = 5000, entity = "TimesheetEvent", mode } = await req.json();
     if (!from || !to) {
       return NextResponse.json({ error: "from and to (YYYY-MM-DD) are required" }, { status: 400 });
     }
 
     const query: Record<string, string> = { start_date: from, end_date: to };
+    // If debugging specific agent, filter by it
+    // But for import logic, we usually fetch all and filter in memory.
+    // Let's keep it consistent with import logic if mode is set?
+    // Import logic fetches ALL then filters. 
+    // But diagnostic usually fetches filtered. 
+    // Let's use query filter if agentId provided, it's faster.
     if (agentId) query["agent_id"] = String(agentId);
 
+    // Special mode for debugging worked hours calculation
+    if (mode === "calculation_debug") {
+      // Fetch TimesheetEvent for breaks
+      const events = await haloFetch("TimesheetEvent", { query });
+      // Fetch Timesheet for start/end
+      const timesheetData = await haloFetch("Timesheet", { query });
+      
+      const dailyBreakdown: any[] = [];
+      
+      // 1. Build actual breaks map
+      const actualBreaksMap: Record<string, number> = {};
+      for (const ev of events) {
+        const aId = `${pick<any>(ev, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
+        // Filter by agent if provided
+        if (agentId && aId !== String(agentId)) continue;
+        
+        const dateVal = pick<string>(ev, ["day", "date", "entryDate", "start_date", "end_date", "created_at"]) || "";
+        if (dateVal) {
+          const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+          const mapKey = `${aId}:${dateStr}`;
+          
+          const breakTypeRaw = pick<any>(ev, ["break_type", "breakType"]);
+          const breakTypeNum = Number(breakTypeRaw);
+          const isBreak = Number.isFinite(breakTypeNum) && breakTypeNum > 0;
+          
+          if (isBreak) {
+            const breakHours = Number(pick<any>(ev, ["timeTakenHours", "rawTime", "raw_time", "timeTaken", "time_taken", "timetaken"]) ?? 0);
+            actualBreaksMap[mapKey] = (actualBreaksMap[mapKey] || 0) + breakHours;
+          }
+        }
+      }
+      
+      // 2. Calculate worked hours
+      for (const ts of timesheetData) {
+        const aId = `${pick<any>(ts, ["agent_id", "agentId", "agentID"]) ?? ""}`.trim();
+        // Filter by agent if provided
+        if (agentId && aId !== String(agentId)) continue;
+        
+        const dateVal = pick<string>(ts, ["date", "day"]) || "";
+        const dateStr = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+        const mapKey = `${aId}:${dateStr}`;
+        
+        const startTime = pick<string>(ts, ["estimated_start_time", "estimatedStartTime", "start_time", "startTime"]);
+        const endTime = pick<string>(ts, ["estimated_end_time", "estimatedEndTime", "end_time", "endTime"]);
+        
+        let worked = 0;
+        let start = null;
+        let end = null;
+        let diffHours = 0;
+        let deduction = 0;
+        let actualBreaks = 0;
+        let allowedBreaks = 0;
+        
+        if (startTime && endTime) {
+          start = new Date(startTime);
+          end = new Date(endTime);
+          if (!isNaN(start.getTime()) && !isNaN(end.getTime())) {
+            const diffMs = end.getTime() - start.getTime();
+            diffHours = diffMs / (1000 * 60 * 60);
+            
+            actualBreaks = actualBreaksMap[mapKey] || 0;
+            allowedBreaks = Number(pick<any>(ts, ["allowed_break_hours", "allowedBreakHours", "break_hours", "breakHours"]) ?? 0);
+            deduction = Math.max(actualBreaks, allowedBreaks);
+            
+            worked = Math.max(0, diffHours - deduction);
+          }
+        }
+        
+        dailyBreakdown.push({
+          date: dateStr,
+          agentId: aId,
+          startTime,
+          endTime,
+          diffHours,
+          actualBreaks,
+          allowedBreaks,
+          deduction,
+          calculatedWorked: worked
+        });
+      }
+      
+      // Sort by date
+      dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date));
+      
+      const totalWorked = dailyBreakdown.reduce((sum, d) => sum + d.calculatedWorked, 0);
+      
+      return NextResponse.json({
+        totalWorked,
+        breakdown: dailyBreakdown
+      });
+    }
+
+    // Original diagnostic code continues...
     const raw = await haloFetch(String(entity), { query });
     const events: any[] = Array.isArray(raw)
       ? raw

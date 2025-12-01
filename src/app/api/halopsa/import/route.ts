@@ -101,6 +101,7 @@ export async function POST(req: NextRequest) {
     const query: Record<string, string> = {
       start_date: options?.from || start,
       end_date: options?.to || end,
+      limit: "10000" // Ensure we get all events for the month (pagination not fully implemented yet)
     } as any;
 
     const events: any[] = await haloFetch("TimesheetEvent", { query });
