@@ -26,7 +26,7 @@ export default function AuthPage() {
         password,
       });
       if (err) throw err;
-      router.push("/");
+      router.push("/user-dashboard");
       router.refresh();
     } catch (e: any) {
       setError(e?.message || "Sign in failed");

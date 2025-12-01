@@ -98,6 +98,15 @@ export function AppHeader() {
             {email ? (
               <>
                 <span className="text-xs text-[var(--color-text)]/70">{email}</span>
+                {!isAdmin && (
+                  <Button 
+                    variant="outline" 
+                    className="h-8 px-2 text-xs" 
+                    onClick={()=> router.push("/admin-login")}
+                  >
+                    Admin
+                  </Button>
+                )}
                 <Button variant="ghost" className="h-8 px-2" onClick={async ()=>{ await supabaseBrowser.auth.signOut(); router.refresh(); }}>Sign out</Button>
               </>
             ) : (
