@@ -30,7 +30,7 @@ export default function AdminPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [years, setYears] = useState<FiscalYear[]>([]);
   const [yearId, setYearId] = useState<string>("");
-  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board" | "halo-sync" | "entries">("employees");
+  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board" | "halo-sync" | "entries" | "badges">("employees");
 
   // Employees: create/edit/delete
   const [newEmployee, setNewEmployee] = useState<{ name: string; role: string }>({ name: "", role: "" });
@@ -95,6 +95,94 @@ export default function AdminPage() {
   // Work Hours per Month State
   const [monthlyHours, setMonthlyHours] = useState<number[]>(new Array(12).fill(160));
   const [monthlyHoursBusy, setMonthlyHoursBusy] = useState(false);
+
+  // Badges State
+  const [badges, setBadges] = useState<any[]>([]);
+  const [newBadge, setNewBadge] = useState({ name: "", description: "", image_url: "", category: "Shared Badges", subcategory: "" });
+  const [badgeAssignments, setBadgeAssignments] = useState<Record<string, Record<string, boolean>>>({}); // employeeId -> badgeId -> bool
+  const [busyBadge, setBusyBadge] = useState(false);
+
+  // Load badges when section is active
+  useEffect(() => {
+    const loadBadgesData = async () => {
+      if (section !== "badges") return;
+      try {
+        const [{ data: bData }, { data: ebData }] = await Promise.all([
+          supabaseBrowser.from("badges").select("*").order("created_at", { ascending: false }),
+          supabaseBrowser.from("employee_badges").select("employee_id, badge_id")
+        ]);
+        setBadges(bData || []);
+        
+        const assignMap: Record<string, Record<string, boolean>> = {};
+        (ebData || []).forEach((r: any) => {
+          if (!assignMap[r.employee_id]) assignMap[r.employee_id] = {};
+          assignMap[r.employee_id][r.badge_id] = true;
+        });
+        setBadgeAssignments(assignMap);
+      } catch (e) {
+        console.error("Failed to load badges", e);
+      }
+    };
+    loadBadgesData();
+  }, [section]);
+
+  const createBadge = async () => {
+    if (!newBadge.name || !newBadge.description || !newBadge.image_url || !newBadge.category) {
+      alert("Please fill in all required fields");
+      return;
+    }
+    setBusyBadge(true);
+    try {
+      const { error } = await supabaseBrowser.from("badges").insert(newBadge);
+      if (error) throw error;
+      setNewBadge({ name: "", description: "", image_url: "", category: "Shared Badges", subcategory: "" });
+      const { data } = await supabaseBrowser.from("badges").select("*").order("created_at", { ascending: false });
+      setBadges(data || []);
+    } catch (e: any) {
+      alert(e.message || "Failed to create badge");
+    } finally {
+      setBusyBadge(false);
+    }
+  };
+
+  const deleteBadge = async (id: string) => {
+    if (!confirm("Delete this badge?")) return;
+    try {
+      await supabaseBrowser.from("badges").delete().eq("id", id);
+      setBadges(prev => prev.filter(b => b.id !== id));
+    } catch (e) {
+      alert("Failed to delete badge");
+    }
+  };
+
+  const toggleBadgeAssignment = async (employeeId: string, badgeId: string, current: boolean) => {
+    // Optimistic update
+    setBadgeAssignments(prev => {
+      const next = { ...prev };
+      if (!next[employeeId]) next[employeeId] = {};
+      next[employeeId][badgeId] = !current;
+      return next;
+    });
+    
+    try {
+      if (current) {
+        // Remove
+        await supabaseBrowser.from("employee_badges").delete().match({ employee_id: employeeId, badge_id: badgeId });
+      } else {
+        // Add
+        await supabaseBrowser.from("employee_badges").insert({ employee_id: employeeId, badge_id: badgeId });
+      }
+    } catch (e) {
+      // Revert on error
+      setBadgeAssignments(prev => {
+        const next = { ...prev };
+        if (!next[employeeId]) next[employeeId] = {};
+        next[employeeId][badgeId] = current;
+        return next;
+      });
+      alert("Failed to update assignment");
+    }
+  };
 
   // Load monthly hours when section is fiscal
   useEffect(() => {
@@ -770,6 +858,13 @@ export default function AdminPage() {
               className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "entries" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
             >
               Time Entries (Manual)
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("badges")}
+              className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "badges" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
+            >
+              Badges
             </button>
           </nav>
         </aside>
@@ -1795,6 +1890,105 @@ export default function AdminPage() {
                       <div>• Manual sync above allows you to sync any fiscal year on demand</div>
                       <div>• Check server logs for sync status and errors</div>
                     </p>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          {section === "badges" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Create New Badge</CardTitle>
+                  <CardDescription>Add a new badge to the system</CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid grid-cols-1 gap-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm block mb-1">Name</label>
+                        <Input value={newBadge.name} onChange={e => setNewBadge({...newBadge, name: e.target.value})} />
+                      </div>
+                      <div>
+                        <label className="text-sm block mb-1">Image URL</label>
+                        <Input value={newBadge.image_url} onChange={e => setNewBadge({...newBadge, image_url: e.target.value})} />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="text-sm block mb-1">Description</label>
+                      <Input value={newBadge.description} onChange={e => setNewBadge({...newBadge, description: e.target.value})} />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div>
+                        <label className="text-sm block mb-1">Category</label>
+                        <select 
+                          className="w-full border border-[var(--color-text)]/20 bg-[var(--color-surface)] text-[var(--color-text)] rounded-lg h-10 px-3 text-sm"
+                          value={newBadge.category} 
+                          onChange={e => setNewBadge({...newBadge, category: e.target.value})}
+                        >
+                          <option>Shared Badges</option>
+                          <option>Servicedesk Badges</option>
+                          <option>Consultant Badges</option>
+                          <option>Agent status badges</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-sm block mb-1">Subcategory (Optional)</label>
+                        <Input value={newBadge.subcategory} onChange={e => setNewBadge({...newBadge, subcategory: e.target.value})} placeholder="e.g. Hidden badges (Unique)" />
+                      </div>
+                    </div>
+                    <Button onClick={createBadge} disabled={busyBadge}>Create Badge</Button>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Badge Assignments</CardTitle>
+                  <CardDescription>Manage which employees have which badges</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="text-left border-b border-[var(--color-surface)]">
+                          <th className="py-2 px-2 min-w-[150px]">Badge</th>
+                          {employees.map(emp => (
+                            <th key={emp.id} className="py-2 px-2 text-center min-w-[80px]">{emp.name}</th>
+                          ))}
+                          <th className="py-2 px-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {badges.map(badge => (
+                          <tr key={badge.id} className="border-b border-[var(--color-surface)]/60 hover:bg-[var(--color-surface)]/30">
+                            <td className="py-2 px-2">
+                              <div className="flex items-center gap-2">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={badge.image_url} alt="" className="w-6 h-6 object-contain" />
+                                <div>
+                                  <div className="font-medium">{badge.name}</div>
+                                  <div className="text-xs opacity-60">{badge.category}</div>
+                                </div>
+                              </div>
+                            </td>
+                            {employees.map(emp => (
+                              <td key={emp.id} className="py-2 px-2 text-center">
+                                <input
+                                  type="checkbox"
+                                  className="w-4 h-4 accent-[var(--color-primary)]"
+                                  checked={!!(badgeAssignments[emp.id]?.[badge.id])}
+                                  onChange={() => toggleBadgeAssignment(emp.id, badge.id, !!(badgeAssignments[emp.id]?.[badge.id]))}
+                                />
+                              </td>
+                            ))}
+                            <td className="py-2 px-2 text-right">
+                              <Button variant="destructive" size="sm" onClick={() => deleteBadge(badge.id)}>Delete</Button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
                 </CardContent>
               </Card>
