@@ -64,7 +64,7 @@ export default function AuthPage() {
     setLoading(true);
     try {
       const { error: err } = await supabaseBrowser.auth.resetPasswordForEmail(email, {
-        redirectTo: typeof window !== "undefined" ? `${window.location.origin}/auth` : undefined,
+        redirectTo: typeof window !== "undefined" ? `${window.location.origin}/update-password` : undefined,
       });
       console.log("resetPasswordForEmail result", { err });
       if (err) throw err;
@@ -80,7 +80,11 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
+    <div className="min-h-screen bg-[var(--color-bg)] flex flex-col items-center justify-center p-4">
+      <div className="mb-8 text-center">
+        <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">QuestIT</h1>
+        <p className="text-lg text-[var(--color-text)]/60 font-medium mt-2">Master your metrics</p>
+      </div>
       <Card className="w-full max-w-md">
         <CardHeader>
           <CardTitle>{mode === "signin" ? "Sign In" : "Sign Up"}</CardTitle>

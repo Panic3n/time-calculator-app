@@ -8,7 +8,7 @@ import { supabaseBrowser } from "@/lib/supabaseClient";
 
 const baseLinks = [
   { href: "/", label: "Home" },
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Agent profile" },
   { href: "/team-goals", label: "Team goals" },
 ];
 
@@ -19,7 +19,7 @@ const adminLinks = [
 ];
 
 const employeeLinks = [
-  { href: "/dashboard", label: "Dashboard" },
+  { href: "/dashboard", label: "Agent profile" },
   { href: "/team-goals", label: "Team goals" },
 ];
 
@@ -72,7 +72,7 @@ export function AppHeader() {
       <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 h-14 flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="h-3 w-3 rounded-full bg-[var(--color-primary)]" />
-          <span className="font-semibold">Time Calculator</span>
+          <span className="font-semibold">QuestIT</span>
         </div>
         <nav className="flex items-center gap-1">
           {!loading && (email ? (

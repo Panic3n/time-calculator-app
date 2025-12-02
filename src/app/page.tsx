@@ -65,8 +65,8 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">Welcome</h1>
-          <p className="text-sm text-[var(--color-text)]/60 font-medium">Stay informed with company news and announcements</p>
+          <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">QuestIT</h1>
+          <p className="text-lg text-[var(--color-text)]/60 font-medium">Master your metrics</p>
           <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
         </div>
 
