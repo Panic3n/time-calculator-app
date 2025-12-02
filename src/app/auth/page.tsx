@@ -80,31 +80,34 @@ export default function AuthPage() {
   };
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex flex-col items-center justify-center p-4">
+    <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10 flex flex-col items-center justify-center p-4">
       <div className="mb-8 text-center">
         <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">QuestIT</h1>
         <p className="text-lg text-[var(--color-text)]/60 font-medium mt-2">Master your metrics</p>
       </div>
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>{mode === "signin" ? "Sign In" : "Sign Up"}</CardTitle>
-          <CardDescription>
-            {mode === "signin"
-              ? "Enter your credentials to access your account"
-              : "Create a new account to get started"}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form
-            onSubmit={
-              mode === "signin"
-                ? handleSignIn
-                : mode === "signup"
-                ? handleSignUp
-                : handleResetPassword
-            }
-            className="space-y-4"
-          >
+      
+      <div className="w-full max-w-md group relative">
+        <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-3xl blur-2xl opacity-50 group-hover:opacity-80 transition-opacity duration-500" />
+        <Card className="relative backdrop-blur-md bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-2xl rounded-3xl">
+          <CardHeader>
+            <CardTitle>{mode === "signin" ? "Sign In" : "Sign Up"}</CardTitle>
+            <CardDescription>
+              {mode === "signin"
+                ? "Enter your credentials to access your account"
+                : "Create a new account to get started"}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form
+              onSubmit={
+                mode === "signin"
+                  ? handleSignIn
+                  : mode === "signup"
+                  ? handleSignUp
+                  : handleResetPassword
+              }
+              className="space-y-4"
+            >
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -194,6 +197,7 @@ export default function AuthPage() {
           </div>
         </CardContent>
       </Card>
+      </div>
     </div>
   );
 }

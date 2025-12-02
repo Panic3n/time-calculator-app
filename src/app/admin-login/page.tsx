@@ -92,24 +92,29 @@ export default function AdminLoginPage() {
 
   if (!isLoggedIn) {
     return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader>
-            <CardTitle>Loading...</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-[var(--color-text)]/70">Checking your session...</p>
-          </CardContent>
-        </Card>
+      <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10 flex items-center justify-center p-4">
+        <div className="w-full max-w-md group relative">
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-3xl blur-2xl opacity-50 group-hover:opacity-80 transition-opacity duration-500" />
+          <Card className="relative backdrop-blur-md bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-2xl rounded-3xl">
+            <CardHeader>
+              <CardTitle>Loading...</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-[var(--color-text)]/70">Checking your session...</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Admin Access</CardTitle>
+    <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10 flex items-center justify-center p-4">
+      <div className="w-full max-w-md group relative">
+        <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-3xl blur-2xl opacity-50 group-hover:opacity-80 transition-opacity duration-500" />
+        <Card className="relative backdrop-blur-md bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-2xl rounded-3xl">
+          <CardHeader>
+            <CardTitle>Admin Access</CardTitle>
           <CardDescription>
             You are logged in as <span className="font-semibold text-[var(--color-text)]">{email}</span>
           </CardDescription>
@@ -166,5 +171,6 @@ export default function AdminLoginPage() {
         </CardContent>
       </Card>
     </div>
+  </div>
   );
 }
