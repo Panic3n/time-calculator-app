@@ -130,7 +130,11 @@ export function AppHeader() {
                     Admin
                   </Button>
                 )}
-                <Button variant="ghost" className="h-8 px-2" onClick={async ()=>{ await supabaseBrowser.auth.signOut(); }}>Sign out</Button>
+                <Button variant="ghost" className="h-8 px-2" onClick={async ()=>{ 
+                  await supabaseBrowser.auth.signOut(); 
+                  router.push("/auth");
+                  router.refresh();
+                }}>Sign out</Button>
               </>
             ) : (
               <Button className="h-8 px-2" onClick={()=> handleNav("/auth")}>Sign in</Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { supabaseBrowser } from "@/lib/supabaseClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,6 +15,16 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const checkSession = async () => {
+      const { data: { session } } = await supabaseBrowser.auth.getSession();
+      if (session) {
+        router.push("/");
+      }
+    };
+    checkSession();
+  }, [router]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
