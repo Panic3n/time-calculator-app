@@ -1983,7 +1983,7 @@ export default function AdminPage() {
                               </td>
                             ))}
                             <td className="py-2 px-2 text-right">
-                              <Button variant="destructive" size="sm" onClick={() => deleteBadge(badge.id)}>Delete</Button>
+                              <Button variant="destructive" className="h-7 px-2 text-xs" onClick={() => deleteBadge(badge.id)}>Delete</Button>
                             </td>
                           </tr>
                         ))}
