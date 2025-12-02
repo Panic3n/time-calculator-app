@@ -213,9 +213,8 @@ export default function LeaderboardsPage() {
                       <h3 className="text-3xl font-bold text-[var(--color-text)]">{getName(topContribution.id)}</h3>
                       <p className="text-blue-400 font-medium mt-1">#1 Contributor</p>
                     </div>
-                    <div className="flex items-baseline gap-2">
-                      <span className="text-5xl font-extrabold text-blue-400 drop-shadow-sm">{Math.round(topContribution.val)}</span>
-                      <span className="text-sm text-[var(--color-text)]/60">billed hours</span>
+                    <div className="mt-2">
+                      <span className="text-xl font-bold text-blue-400 drop-shadow-sm">Top Billable Performance</span>
                     </div>
                   </>
                 ) : (
