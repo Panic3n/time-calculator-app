@@ -64,6 +64,7 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [monthlyHours, setMonthlyHours] = useState<Record<number, number>>({});
+  const [completedBadges, setCompletedBadges] = useState<any[]>([]);
 
   const months = fiscalMonths();
 
@@ -204,6 +205,21 @@ export default function DashboardPage() {
     loadGoals();
   }, [yearId]);
 
+  useEffect(() => {
+    const loadBadges = async () => {
+      if (!employee?.id) return;
+      const { data } = await supabaseBrowser
+        .from("employee_badges")
+        .select("assigned_at, badge:badges(*)")
+        .eq("employee_id", employee.id)
+        .order("assigned_at", { ascending: false });
+      
+      const formatted = (data || []).map((item: any) => item.badge);
+      setCompletedBadges(formatted);
+    };
+    loadBadges();
+  }, [employee?.id]);
+
   const chartData = months.map((m) => {
     const e = entries.find((x) => x.month_index === m.index);
     const worked = e?.worked ?? 0;
@@ -277,6 +293,34 @@ export default function DashboardPage() {
             </select>
           ) : null}
         </div>
+
+        {/* Completed Quests Section */}
+        {completedBadges.length > 0 && (
+          <div>
+            <div className="mb-6">
+              <h2 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">Completed Quests</h2>
+              <p className="text-sm text-[var(--color-text)]/60 font-medium mt-1">Badges earned by {employee?.name}</p>
+              <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {completedBadges.map((badge) => (
+                <div key={badge.id} className="group relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-md hover:shadow-xl transition-all duration-300 rounded-xl p-4 flex flex-col items-center text-center space-y-2 group-hover:border-[var(--color-primary)]/30 h-full">
+                    <div className="w-12 h-12 relative group-hover:scale-110 transition-transform duration-300">
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img src={badge.image_url} alt={badge.name} className="w-full h-full object-contain drop-shadow-sm" />
+                    </div>
+                    <div className="space-y-1 w-full">
+                      <p className="text-xs font-bold text-[var(--color-text)] line-clamp-2 leading-tight">{badge.name}</p>
+                      <p className="text-[10px] text-[var(--color-text)]/50 line-clamp-2 leading-tight">{badge.description}</p>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div>
           <div className="mb-6">
