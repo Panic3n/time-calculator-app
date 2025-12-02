@@ -33,25 +33,25 @@ INSERT INTO badges (name, description, image_url, category, subcategory) VALUES
 ('Ascended Agent', 'Claim this badge by being an agent in HaloPSA for 5 years.', 'https://cdn-icons-png.flaticon.com/128/15097/15097108.png', 'Shared Badges', 'Agent status badges'),
 ('!-The One-!', 'Claim this badge by being an agent in HaloPSA for 10 years.', 'https://cdn-icons-png.flaticon.com/128/208/208962.png', 'Shared Badges', 'Agent status badges'),
 
--- Servicedesk Badges > Knowledge badges
-('Veteran of knowledge', 'Claim this badge by contributing 25 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/1644/1644231.png', 'Servicedesk Badges', 'Knowledge badges'),
-('Master of knowledge', 'Claim this badge by contributing 50 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/17483/17483004.png', 'Servicedesk Badges', 'Knowledge badges'),
-('Guru of knowledge', 'Claim this badge by contributing 100 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/17482/17482995.png', 'Servicedesk Badges', 'Knowledge badges'),
-('!-Bird of knowledge-!', 'Claim this badge by contributing 500 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/15161/15161974.png', 'Servicedesk Badges', 'Knowledge badges'),
+-- Service Operation Badges > Knowledge badges
+('Veteran of knowledge', 'Claim this badge by contributing 25 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/1644/1644231.png', 'Service Operation Badges', 'Knowledge badges'),
+('Master of knowledge', 'Claim this badge by contributing 50 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/17483/17483004.png', 'Service Operation Badges', 'Knowledge badges'),
+('Guru of knowledge', 'Claim this badge by contributing 100 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/17482/17482995.png', 'Service Operation Badges', 'Knowledge badges'),
+('!-Bird of knowledge-!', 'Claim this badge by contributing 500 knowledge base articles.', 'https://cdn-icons-png.flaticon.com/128/15161/15161974.png', 'Service Operation Badges', 'Knowledge badges'),
 
--- Servicedesk Badges > SLA 'on time resolution' badges
-('SLA Veteran', 'Claim this badge by having 95% ''on time resolution'' during 1 month.', 'https://cdn-icons-png.flaticon.com/128/14580/14580718.png', 'Servicedesk Badges', 'SLA ''on time resolution'' badges'),
-('SLA Master', 'Claim this badge by having 95% ''on time resolution'' during 2 months in a row.', 'https://cdn-icons-png.flaticon.com/128/14580/14580872.png', 'Servicedesk Badges', 'SLA ''on time resolution'' badges'),
-('SLA Guru', 'Claim this badge by having 95% ''on time resolution'' during 3 months in a row.', 'https://cdn-icons-png.flaticon.com/128/14580/14580673.png', 'Servicedesk Badges', 'SLA ''on time resolution'' badges'),
-('SLA Ascended', 'Claim this badge by having 95% ''on time resolution'' during 6 months in a row.', 'https://cdn-icons-png.flaticon.com/128/14580/14580616.png', 'Servicedesk Badges', 'SLA ''on time resolution'' badges'),
-('!-Resolutionist-!', 'Claim this badge by having 95% ''on time resolution'' during 1 full year .', 'https://cdn-icons-png.flaticon.com/128/14580/14580627.png', 'Servicedesk Badges', 'SLA ''on time resolution'' badges'),
+-- Service Operation Badges > SLA 'on time resolution' badges
+('SLA Veteran', 'Claim this badge by having 95% ''on time resolution'' during 1 month.', 'https://cdn-icons-png.flaticon.com/128/14580/14580718.png', 'Service Operation Badges', 'SLA ''on time resolution'' badges'),
+('SLA Master', 'Claim this badge by having 95% ''on time resolution'' during 2 months in a row.', 'https://cdn-icons-png.flaticon.com/128/14580/14580872.png', 'Service Operation Badges', 'SLA ''on time resolution'' badges'),
+('SLA Guru', 'Claim this badge by having 95% ''on time resolution'' during 3 months in a row.', 'https://cdn-icons-png.flaticon.com/128/14580/14580673.png', 'Service Operation Badges', 'SLA ''on time resolution'' badges'),
+('SLA Ascended', 'Claim this badge by having 95% ''on time resolution'' during 6 months in a row.', 'https://cdn-icons-png.flaticon.com/128/14580/14580616.png', 'Service Operation Badges', 'SLA ''on time resolution'' badges'),
+('!-Resolutionist-!', 'Claim this badge by having 95% ''on time resolution'' during 1 full year .', 'https://cdn-icons-png.flaticon.com/128/14580/14580627.png', 'Service Operation Badges', 'SLA ''on time resolution'' badges'),
 
--- Servicedesk Badges > SLA 'avg.response time' badges
-('Responder Veteran', 'Claim this badge by having 1h avg. response time during 1 month.', 'https://cdn-icons-png.flaticon.com/128/17200/17200051.png', 'Servicedesk Badges', 'SLA ''avg.response time'' badges'),
-('Responder Master', 'Claim this badge by having 1h avg. response time during 2 months in a row.', 'https://cdn-icons-png.flaticon.com/128/17199/17199974.png', 'Servicedesk Badges', 'SLA ''avg.response time'' badges'),
-('Responder Guru', 'Claim this badge by having 1.5h avg. response time during 3 month in a row.', 'https://cdn-icons-png.flaticon.com/128/17199/17199970.png', 'Servicedesk Badges', 'SLA ''avg.response time'' badges'),
-('Responder Ascended', 'Claim this badge by having 1.5h avg. response time during 6 month in a row.', 'https://cdn-icons-png.flaticon.com/128/17199/17199990.png', 'Servicedesk Badges', 'SLA ''avg.response time'' badges'),
-('!-First Responder-!', 'Claim this badge by having 1.5h avg.response time during 1 year.', 'https://cdn-icons-png.flaticon.com/128/17199/17199950.png', 'Servicedesk Badges', 'SLA ''avg.response time'' badges'),
+-- Service Operation Badges > SLA 'avg.response time' badges
+('Responder Veteran', 'Claim this badge by having 1h avg. response time during 1 month.', 'https://cdn-icons-png.flaticon.com/128/17200/17200051.png', 'Service Operation Badges', 'SLA ''avg.response time'' badges'),
+('Responder Master', 'Claim this badge by having 1h avg. response time during 2 months in a row.', 'https://cdn-icons-png.flaticon.com/128/17199/17199974.png', 'Service Operation Badges', 'SLA ''avg.response time'' badges'),
+('Responder Guru', 'Claim this badge by having 1.5h avg. response time during 3 month in a row.', 'https://cdn-icons-png.flaticon.com/128/17199/17199970.png', 'Service Operation Badges', 'SLA ''avg.response time'' badges'),
+('Responder Ascended', 'Claim this badge by having 1.5h avg. response time during 6 month in a row.', 'https://cdn-icons-png.flaticon.com/128/17199/17199990.png', 'Service Operation Badges', 'SLA ''avg.response time'' badges'),
+('!-First Responder-!', 'Claim this badge by having 1.5h avg.response time during 1 year.', 'https://cdn-icons-png.flaticon.com/128/17199/17199950.png', 'Service Operation Badges', 'SLA ''avg.response time'' badges'),
 
 -- Consultant Badges > Special consultant badges
 ('Deadline Dynamo', 'Complete 100 large and 100 small projects on or before their end-date.', 'https://cdn-icons-png.flaticon.com/128/9419/9419011.png', 'Consultant Badges', 'Special consultant badges'),

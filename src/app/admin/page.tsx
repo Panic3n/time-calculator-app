@@ -1927,7 +1927,7 @@ export default function AdminPage() {
                           onChange={e => setNewBadge({...newBadge, category: e.target.value})}
                         >
                           <option>Shared Badges</option>
-                          <option>Servicedesk Badges</option>
+                          <option>Service Operation Badges</option>
                           <option>Consultant Badges</option>
                           <option>Agent status badges</option>
                         </select>
