@@ -263,6 +263,8 @@ export default function LeaderboardsPage() {
                             {getName(item.id)}
                           </span>
                           {index === 0 && <span className="text-xs text-yellow-500 font-medium">Grandmaster Collector</span>}
+                          {index === 1 && <span className="text-xs text-gray-400 font-medium">Master Collector</span>}
+                          {index === 2 && <span className="text-xs text-orange-500 font-medium">Elite Collector</span>}
                         </div>
                       </div>
                       <div className="flex items-center gap-3 bg-[var(--color-bg)] px-4 py-2 rounded-full border border-[var(--color-border)]">
