@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "QuestIT",
   description: "Master your metrics",
+  icons: {
+    icon: "/logo.png",
+  },
 };
 
 export default function RootLayout({

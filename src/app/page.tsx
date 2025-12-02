@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Image from "next/image";
+import { supabaseBrowser } from "@/lib/supabaseClient";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 
 type NewsArticle = {
@@ -24,6 +26,15 @@ export default function Home() {
   const [message, setMessage] = useState<MessageBoardContent | null>(null);
   const [newsLoading, setNewsLoading] = useState(true);
   const [messageLoading, setMessageLoading] = useState(true);
+
+  // Auth check
+  useEffect(() => {
+    const checkAuth = async () => {
+      const { data: { session } } = await supabaseBrowser.auth.getSession();
+      if (!session) router.push("/auth");
+    };
+    checkAuth();
+  }, [router]);
 
   // Load company news from Halo KB
   useEffect(() => {
@@ -65,7 +76,10 @@ export default function Home() {
     <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
         <div className="space-y-2">
-          <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">QuestIT</h1>
+          <div className="flex items-center gap-3">
+            <Image src="/logo.png" alt="QuestIT Logo" width={36} height={36} className="rounded-lg" />
+            <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">QuestIT</h1>
+          </div>
           <p className="text-lg text-[var(--color-text)]/60 font-medium">Master your metrics</p>
           <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
         </div>
