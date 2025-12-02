@@ -18,6 +18,11 @@ export default function LeaderboardsPage() {
   const [badgeCounts, setBadgeCounts] = useState<Record<string, number>>({});
   const [teamGoal, setTeamGoal] = useState<number>(0);
 
+  // Modal states
+  const [selectedAgent, setSelectedAgent] = useState<{id: string, name: string} | null>(null);
+  const [agentBadges, setAgentBadges] = useState<any[]>([]);
+  const [loadingBadges, setLoadingBadges] = useState(false);
+
   // Load initial data (years + employees)
   useEffect(() => {
     const init = async () => {
@@ -111,6 +116,23 @@ export default function LeaderboardsPage() {
   }, [badgeCounts]);
 
   const getName = (id: string) => employees.find(e => e.id === id)?.name || "Unknown Agent";
+
+  const handleAgentClick = async (agentId: string) => {
+    const name = getName(agentId);
+    setSelectedAgent({ id: agentId, name });
+    setLoadingBadges(true);
+    try {
+      const { data } = await supabaseBrowser
+        .from("employee_badges")
+        .select("badge:badges(*)")
+        .eq("employee_id", agentId);
+      setAgentBadges((data || []).map((x: any) => x.badge));
+    } catch {
+      setAgentBadges([]);
+    } finally {
+      setLoadingBadges(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -211,7 +233,7 @@ export default function LeaderboardsPage() {
         <div className="space-y-8">
           <div className="text-center space-y-2">
             <h2 className="text-3xl font-bold text-[var(--color-text)]">Badge Collectors 🎖️</h2>
-            <p className="text-[var(--color-text)]/60">Most badges earned (All time)</p>
+            <p className="text-[var(--color-text)]/60">Most badges earned (All time). Click to view details.</p>
           </div>
 
           <Card className="max-w-3xl mx-auto bg-[var(--color-surface)]/50 backdrop-blur-sm border-[var(--color-border)] shadow-xl overflow-hidden">
@@ -221,7 +243,8 @@ export default function LeaderboardsPage() {
                   {badgeLeaderboard.map((item, index) => (
                     <div 
                       key={item.id} 
-                      className={`flex items-center justify-between p-6 hover:bg-[var(--color-surface)] transition-colors ${
+                      onClick={() => handleAgentClick(item.id)}
+                      className={`flex items-center justify-between p-6 hover:bg-[var(--color-surface)] transition-colors cursor-pointer ${
                         index === 0 ? "bg-yellow-500/5" : 
                         index === 1 ? "bg-gray-400/5" : 
                         index === 2 ? "bg-orange-500/5" : ""
@@ -258,6 +281,55 @@ export default function LeaderboardsPage() {
             </CardContent>
           </Card>
         </div>
+
+        {/* Agent Badge Modal */}
+        {selectedAgent && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200" onClick={() => setSelectedAgent(null)}>
+            <div 
+              className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-5xl max-h-[90vh] overflow-y-auto p-8 animate-in zoom-in-95 duration-200" 
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between mb-8 sticky top-0 bg-[var(--color-bg)] z-10 pb-4 border-b border-[var(--color-border)]">
+                <div>
+                  <h2 className="text-3xl font-bold text-[var(--color-text)]">{selectedAgent.name}&apos;s Trophy Case</h2>
+                  <p className="text-[var(--color-text)]/60 mt-1">Total Badges: {agentBadges.length}</p>
+                </div>
+                <button 
+                  onClick={() => setSelectedAgent(null)} 
+                  className="p-2 hover:bg-[var(--color-surface)] rounded-full transition-colors"
+                >
+                  <span className="text-2xl">✕</span>
+                </button>
+              </div>
+              
+              {loadingBadges ? (
+                <div className="py-20 text-center text-[var(--color-text)]/60">Loading badges...</div>
+              ) : agentBadges.length > 0 ? (
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-6">
+                  {agentBadges.map((badge) => (
+                    <div key={badge.id} className="group relative">
+                      <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-xl blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-md hover:shadow-xl transition-all duration-300 rounded-xl p-4 flex flex-col items-center text-center space-y-3 group-hover:border-[var(--color-primary)]/30 h-full">
+                        <div className="w-20 h-20 relative group-hover:scale-110 transition-transform duration-300">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img src={badge.image_url} alt={badge.name} className="w-full h-full object-contain drop-shadow-md" />
+                        </div>
+                        <div className="space-y-1 w-full">
+                          <p className="font-bold text-sm text-[var(--color-text)] leading-tight">{badge.name}</p>
+                          <p className="text-xs text-[var(--color-text)]/50 line-clamp-2 leading-tight">{badge.description}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="py-20 text-center text-[var(--color-text)]/40 italic">
+                  No badges found for this agent.
+                </div>
+              )}
+            </div>
+          </div>
+        )}
 
       </main>
     </div>
