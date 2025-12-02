@@ -131,9 +131,13 @@ export function AppHeader() {
                   </Button>
                 )}
                 <Button variant="ghost" className="h-8 px-2" onClick={async ()=>{ 
+                  setLoading(true);
                   await supabaseBrowser.auth.signOut(); 
+                  setEmail("");
+                  setIsAdmin(false);
                   router.push("/auth");
                   router.refresh();
+                  setLoading(false);
                 }}>Sign out</Button>
               </>
             ) : (
