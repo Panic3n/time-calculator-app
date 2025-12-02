@@ -10,7 +10,7 @@ create table if not exists badges (
 
 create table if not exists employee_badges (
   id uuid default gen_random_uuid() primary key,
-  employee_id text not null references employees(id) on delete cascade,
+  employee_id uuid not null references employees(id) on delete cascade,
   badge_id uuid not null references badges(id) on delete cascade,
   assigned_at timestamptz default now(),
   unique(employee_id, badge_id)
