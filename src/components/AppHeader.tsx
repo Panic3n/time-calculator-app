@@ -59,12 +59,18 @@ export function AppHeader() {
 
   useEffect(() => {
     load();
-    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange(() => {
-      load();
-      router.refresh();
+    const { data: { subscription } } = supabaseBrowser.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_OUT') {
+        setEmail("");
+        setIsAdmin(false);
+        router.refresh();
+      } else if (event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        load();
+        router.refresh();
+      }
     });
     return () => subscription.unsubscribe();
-  }, [router]);
+  }, [router, pathname]);
 
   const handleNav = (href: string) => {
     router.push(href);
@@ -132,7 +138,9 @@ export function AppHeader() {
                 )}
                 <Button variant="ghost" className="h-8 px-2" onClick={async ()=>{ 
                   setLoading(true);
-                  await supabaseBrowser.auth.signOut(); 
+                  await supabaseBrowser.auth.signOut();
+                  // Force clear local storage just in case
+                  localStorage.clear(); 
                   setEmail("");
                   setIsAdmin(false);
                   router.push("/auth");

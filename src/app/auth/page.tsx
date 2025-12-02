@@ -16,16 +16,6 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    const checkSession = async () => {
-      const { data: { session } } = await supabaseBrowser.auth.getSession();
-      if (session) {
-        router.push("/");
-      }
-    };
-    checkSession();
-  }, [router]);
-
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
