@@ -13,6 +13,7 @@ const adminLinks = [
   { href: "/", label: "News hub" },
   { href: "/dashboard", label: "Agent profile" },
   { href: "/quests", label: "Quests" },
+  { href: "/leaderboards", label: "Leaderboards" },
   { href: "/team-goals", label: "Team goals" },
   { href: "/team", label: "Team" },
   { href: "/admin", label: "Admin" },
@@ -22,6 +23,7 @@ const employeeLinks = [
   { href: "/", label: "News hub" },
   { href: "/dashboard", label: "Agent profile" },
   { href: "/quests", label: "Quests" },
+  { href: "/leaderboards", label: "Leaderboards" },
   { href: "/team-goals", label: "Team goals" },
 ];
 
