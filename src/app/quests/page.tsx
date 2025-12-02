@@ -1,7 +1,5 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
-
 type Badge = {
   name: string;
   description: string;
@@ -330,28 +328,27 @@ export default function QuestsPage() {
                 
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
                   {category.badges.map((badge, badgeIdx) => (
-                    <Card 
-                      key={badgeIdx}
-                      className="group relative overflow-hidden p-6 flex flex-col items-center text-center space-y-4 hover:shadow-lg transition-all duration-300 hover:-translate-y-1"
-                    >
-                      <div className="relative w-20 h-20 group-hover:scale-110 transition-transform duration-300">
-                        {/* eslint-disable-next-line @next/next/no-img-element */}
-                        <img 
-                          src={badge.image} 
-                          alt={badge.name}
-                          className="w-full h-full object-contain drop-shadow-md"
-                        />
+                    <div key={badgeIdx} className="group relative">
+                      <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                      <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-6 flex flex-col items-center text-center space-y-4 group-hover:border-[var(--color-primary)]/30 h-full">
+                        <div className="relative w-20 h-20 group-hover:scale-110 transition-transform duration-300">
+                          {/* eslint-disable-next-line @next/next/no-img-element */}
+                          <img 
+                            src={badge.image} 
+                            alt={badge.name}
+                            className="w-full h-full object-contain drop-shadow-md"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <h4 className="font-semibold text-[var(--color-text)] text-lg">
+                            {badge.name}
+                          </h4>
+                          <p className="text-sm text-[var(--color-text)]/60 leading-relaxed">
+                            {badge.description}
+                          </p>
+                        </div>
                       </div>
-                      <div className="space-y-2">
-                        <h4 className="font-semibold text-[var(--color-text)] text-lg">
-                          {badge.name}
-                        </h4>
-                        <p className="text-sm text-[var(--color-text)]/60 leading-relaxed">
-                          {badge.description}
-                        </p>
-                      </div>
-                      <div className="absolute inset-0 bg-gradient-to-br from-[var(--color-primary)]/5 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none" />
-                    </Card>
+                    </div>
                   ))}
                 </div>
               </div>
