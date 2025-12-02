@@ -75,15 +75,15 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-[var(--color-bg)] via-[var(--color-bg)] to-[var(--color-surface)]/10">
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12 space-y-8">
-        <div className="space-y-4">
-          <div className="flex justify-center">
-            <Image src="/logo.png" alt="QuestIT Logo" width={144} height={144} className="rounded-lg" />
-          </div>
-          <div className="space-y-2">
-            <h1 className="text-4xl font-bold tracking-tight text-[var(--color-text)]">QuestIT</h1>
-            <p className="text-lg text-[var(--color-text)]/60 font-medium">Master your metrics</p>
-            <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
-          </div>
+        <div className="w-full mb-8 rounded-2xl overflow-hidden shadow-2xl border border-[var(--color-surface)]/60 relative h-48 sm:h-64 md:h-80 lg:h-96 group">
+           <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent z-10" />
+           <Image 
+             src="/banner.png" 
+             alt="QuestIT Banner" 
+             fill
+             className="object-cover transform group-hover:scale-105 transition-transform duration-700 ease-in-out"
+             priority
+           />
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
