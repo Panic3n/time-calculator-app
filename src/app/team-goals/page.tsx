@@ -167,14 +167,13 @@ export default function TeamGoalsPage() {
         if (error) throw error;
         setEntriesPersonal(data as any[]);
 
-        // Optional: feedback score stored in employee_feedback table (if you sync it from Halo)
+        // Feedback score from employee_feedback table (all-time average synced from HaloPSA)
         const { data: fb } = await supabaseBrowser
           .from("employee_feedback")
-          .select("score")
+          .select("average_score, feedback_count")
           .eq("employee_id", employee.id)
-          .eq("fiscal_year_id", yearId)
-          .maybeSingle?.();
-        const scoreVal = (fb as any)?.score;
+          .maybeSingle();
+        const scoreVal = (fb as any)?.average_score;
         setFeedbackScore(typeof scoreVal === "number" ? scoreVal : null);
       } catch (e: any) {
         // Feedback is optional; only surface hard errors from entries

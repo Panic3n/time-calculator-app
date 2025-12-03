@@ -90,10 +90,14 @@ export async function GET(req: NextRequest) {
       );
     }
 
+    // 4. Sync feedback scores (all-time, not fiscal year specific)
+    const feedbackResult = await syncFeedbackScores(agentMap);
+
     console.log("Sync complete:", {
       fiscalYear: latestYear.label,
       readRows: importResult.readRows,
       importedRows: importResult.importedRows,
+      feedbackSynced: feedbackResult.synced,
     });
 
     return NextResponse.json(
@@ -103,6 +107,7 @@ export async function GET(req: NextRequest) {
         fiscalYear: latestYear.label,
         readRows: importResult.readRows,
         importedRows: importResult.importedRows,
+        feedbackSynced: feedbackResult.synced,
       },
       { status: 200 }
     );
@@ -597,5 +602,126 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     return { ok: true, readRows, skippedFuture, importedRows: payload.length };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? "Import failed" };
+  }
+}
+
+/**
+ * Sync feedback scores from HaloPSA
+ * Calculates all-time average feedback score per agent
+ */
+async function syncFeedbackScores(agentMap: Record<string, string>): Promise<{ ok: boolean; synced: number; error?: string }> {
+  try {
+    // Build reverse map: halo agent_id -> employee_id
+    const agentToEmployee: Record<number, string> = {};
+    
+    // Load persisted mappings
+    try {
+      const { data: persisted } = await supabaseServer
+        .from("halo_agent_map")
+        .select("employee_id, agent_id");
+      for (const row of persisted || []) {
+        if ((row as any).agent_id && (row as any).employee_id) {
+          agentToEmployee[Number((row as any).agent_id)] = String((row as any).employee_id);
+        }
+      }
+    } catch {}
+    
+    // Also add from passed agentMap
+    for (const [agentId, empId] of Object.entries(agentMap)) {
+      if (/^\d+$/.test(agentId)) {
+        agentToEmployee[Number(agentId)] = empId;
+      }
+    }
+    
+    // Fetch all feedback from HaloPSA
+    let allFeedback: any[] = [];
+    try {
+      const feedbackData = await haloFetch("Feedback", { query: { pageinate: "false", count: "10000" } });
+      allFeedback = Array.isArray(feedbackData) ? feedbackData : (feedbackData?.records || []);
+      console.log(`Fetched ${allFeedback.length} feedback entries from HaloPSA`);
+    } catch (e) {
+      console.warn("Could not fetch Feedback data:", e);
+      return { ok: true, synced: 0 };
+    }
+    
+    if (allFeedback.length === 0) {
+      return { ok: true, synced: 0 };
+    }
+    
+    // Fetch tickets to map ticket_id -> agent_id
+    const ticketAgentMap: Record<number, number> = {};
+    try {
+      const ticketsData = await haloFetch("Tickets", { 
+        query: { 
+          count: "10000",
+          includeclosed: "true"
+        } 
+      });
+      const tickets = Array.isArray(ticketsData) ? ticketsData : (ticketsData?.tickets || []);
+      for (const t of tickets) {
+        if (t.id && t.agent_id) {
+          ticketAgentMap[t.id] = t.agent_id;
+        }
+      }
+      console.log(`Built ticket->agent map with ${Object.keys(ticketAgentMap).length} entries`);
+    } catch (e) {
+      console.warn("Could not fetch Tickets for feedback mapping:", e);
+      return { ok: true, synced: 0 };
+    }
+    
+    // Calculate average feedback score per agent
+    const agentScores: Record<number, { total: number; count: number }> = {};
+    
+    for (const fb of allFeedback) {
+      const ticketId = fb.ticket_id;
+      const score = Number(fb.score);
+      if (!ticketId || isNaN(score)) continue;
+      
+      const agentId = ticketAgentMap[ticketId];
+      if (!agentId) continue;
+      
+      if (!agentScores[agentId]) {
+        agentScores[agentId] = { total: 0, count: 0 };
+      }
+      agentScores[agentId].total += score;
+      agentScores[agentId].count++;
+    }
+    
+    // Build upsert payload for employee_feedback table
+    const payload: { employee_id: string; average_score: number; feedback_count: number; last_synced_at: string }[] = [];
+    
+    for (const [agentId, data] of Object.entries(agentScores)) {
+      const empId = agentToEmployee[Number(agentId)];
+      if (!empId) continue;
+      
+      const avgScore = data.count > 0 ? Math.round((data.total / data.count) * 100) / 100 : 0;
+      payload.push({
+        employee_id: empId,
+        average_score: avgScore,
+        feedback_count: data.count,
+        last_synced_at: new Date().toISOString(),
+      });
+    }
+    
+    if (payload.length === 0) {
+      console.log("No feedback scores to sync (no matching employees)");
+      return { ok: true, synced: 0 };
+    }
+    
+    // Upsert to employee_feedback table
+    const { error: upErr } = await supabaseServer
+      .from("employee_feedback")
+      .upsert(payload, { onConflict: "employee_id" });
+    
+    if (upErr) {
+      console.error("Failed to upsert feedback scores:", upErr);
+      return { ok: false, synced: 0, error: upErr.message };
+    }
+    
+    console.log(`Synced feedback scores for ${payload.length} employees`);
+    return { ok: true, synced: payload.length };
+  } catch (e: any) {
+    console.error("Feedback sync error:", e);
+    return { ok: false, synced: 0, error: e?.message };
   }
 }
