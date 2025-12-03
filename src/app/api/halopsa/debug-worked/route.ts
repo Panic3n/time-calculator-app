@@ -48,6 +48,37 @@ export async function POST(req: NextRequest) {
     const events: any[] = await haloFetch("TimesheetEvent", { 
       query: { start_date: from, end_date: to, limit: "10000" } 
     });
+    
+    // Fetch Timesheet data (for actual clock-in/clock-out times)
+    let timesheets: any[] = [];
+    try {
+      timesheets = await haloFetch("Timesheet", { 
+        query: { start_date: from, end_date: to, limit: "10000" } 
+      });
+    } catch (e) {
+      console.warn("Could not fetch Timesheet data:", e);
+    }
+    
+    // Build a map of agentId+date -> { start, end, breaks } from Timesheet
+    const timesheetMap: Record<string, { start: number; end: number; breaks: number }> = {};
+    for (const ts of timesheets) {
+      const tsAgentId = `${pick<any>(ts, ["agent_id", "agentId"]) ?? ""}`.trim();
+      const dateVal = pick<string>(ts, ["date"]) || "";
+      if (!tsAgentId || !dateVal) continue;
+      const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+      
+      const startTime = pick<string>(ts, ["start_time", "startTime"]);
+      const endTime = pick<string>(ts, ["end_time", "endTime"]);
+      const breakHours = Number(pick<any>(ts, ["break_hours", "breakHours"]) ?? 0);
+      
+      if (startTime && endTime) {
+        const s = new Date(startTime).getTime();
+        const e = new Date(endTime).getTime();
+        if (!isNaN(s) && !isNaN(e)) {
+          timesheetMap[`${tsAgentId}:${dateOnly}`] = { start: s, end: e, breaks: breakHours };
+        }
+      }
+    }
 
     // Filter to this employee's events
     const empEvents = events.filter(ev => {
@@ -82,6 +113,7 @@ export async function POST(req: NextRequest) {
       let latest = -Infinity;
       let totalBreaks = 0;
       const entries: any[] = [];
+      let dayAgentId = "";
       
       for (const ev of dayEvents) {
         const startVal = pick<string>(ev, ["start_date", "startdate", "startDate"]);
@@ -91,6 +123,11 @@ export async function POST(req: NextRequest) {
         const breakType = `${breakTypeRaw ?? ""}`.trim().toLowerCase();
         const chargeType = `${pick<any>(ev, ["charge_type_name", "chargeTypeName"]) ?? ""}`.trim();
         const note = pick<string>(ev, ["note", "notes", "summary", "description"]) || "";
+        
+        // Capture agentId for Timesheet lookup
+        if (!dayAgentId) {
+          dayAgentId = `${pick<any>(ev, ["agent_id", "agentId"]) ?? ""}`.trim();
+        }
         
         const breakTypeNum = Number(breakTypeRaw);
         const isBreak = (Number.isFinite(breakTypeNum) && breakTypeNum > 0)
@@ -120,16 +157,43 @@ export async function POST(req: NextRequest) {
         });
       }
       
-      const spanMs = latest - earliest;
-      const spanHours = spanMs > 0 ? spanMs / (1000 * 60 * 60) : 0;
-      const worked = Math.max(0, spanHours - totalBreaks);
+      // Check for Timesheet data (manual clock-in/clock-out)
+      const tsKey = `${dayAgentId}:${date}`;
+      const tsData = timesheetMap[tsKey];
+      
+      let spanHours = 0;
+      let worked = 0;
+      let usedTimesheet = false;
+      let timesheetStart: string | null = null;
+      let timesheetEnd: string | null = null;
+      let timesheetBreaks = 0;
+      
+      if (tsData && tsData.end > tsData.start) {
+        // Use Timesheet data (manual clock-in/clock-out)
+        usedTimesheet = true;
+        timesheetStart = new Date(tsData.start).toISOString();
+        timesheetEnd = new Date(tsData.end).toISOString();
+        timesheetBreaks = tsData.breaks;
+        const spanMs = tsData.end - tsData.start;
+        spanHours = spanMs / (1000 * 60 * 60);
+        worked = Math.max(0, spanHours - tsData.breaks);
+      } else {
+        // Fall back to TimesheetEvent data
+        const spanMs = latest - earliest;
+        spanHours = spanMs > 0 ? spanMs / (1000 * 60 * 60) : 0;
+        worked = Math.max(0, spanHours - totalBreaks);
+      }
       
       dailyBreakdown.push({
         date,
+        usedTimesheet,
+        timesheetStart,
+        timesheetEnd,
+        timesheetBreaks,
         earliestStart: earliest !== Infinity ? new Date(earliest).toISOString() : null,
         latestEnd: latest !== -Infinity ? new Date(latest).toISOString() : null,
         spanHours: Math.round(spanHours * 100) / 100,
-        totalBreaks: Math.round(totalBreaks * 100) / 100,
+        totalBreaks: Math.round((usedTimesheet ? timesheetBreaks : totalBreaks) * 100) / 100,
         workedHours: Math.round(worked * 100) / 100,
         entryCount: entries.length,
         entries,

@@ -258,7 +258,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       }
     }
 
-    // Fetch TimesheetEvent from HaloPSA
+    // Fetch TimesheetEvent from HaloPSA (for logged/billed hours)
     const query: Record<string, string> = {
       start_date: start,
       end_date: end,
@@ -266,6 +266,37 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     };
 
     const events: any[] = await haloFetch("TimesheetEvent", { query });
+    
+    // Fetch Timesheet data (for actual clock-in/clock-out times)
+    // Timesheet has start_time and end_time which are manually entered by agents
+    let timesheets: any[] = [];
+    try {
+      timesheets = await haloFetch("Timesheet", { query });
+    } catch (e) {
+      console.warn("Could not fetch Timesheet data, falling back to TimesheetEvent:", e);
+    }
+    
+    // Build a map of agent+date -> { start_time, end_time, break_hours } from Timesheet
+    const timesheetMap: Record<string, { start: number; end: number; breaks: number }> = {};
+    for (const ts of timesheets) {
+      const agentId = `${pick<any>(ts, ["agent_id", "agentId"]) ?? ""}`.trim();
+      const dateVal = pick<string>(ts, ["date"]) || "";
+      if (!agentId || !dateVal) continue;
+      const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+      
+      const startTime = pick<string>(ts, ["start_time", "startTime"]);
+      const endTime = pick<string>(ts, ["end_time", "endTime"]);
+      const breakHours = Number(pick<any>(ts, ["break_hours", "breakHours"]) ?? 0);
+      
+      if (startTime && endTime) {
+        const s = new Date(startTime).getTime();
+        const e = new Date(endTime).getTime();
+        if (!isNaN(s) && !isNaN(e)) {
+          const key = `${agentId}:${dateOnly}`;
+          timesheetMap[key] = { start: s, end: e, breaks: breakHours };
+        }
+      }
+    }
 
     // Load billable charge types
     let billableTypeSet: Set<string> | null = null;
@@ -302,7 +333,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     // Aggregate per agent + fiscal month
     type Totals = { logged: number; billed: number; worked: number };
     const agg: Record<string, Totals> = {};
-    const dailyAgg: Record<string, { start: number; end: number; breaks: number; empId: string; monthIdx: number }> = {};
+    const dailyAgg: Record<string, { start: number; end: number; breaks: number; empId: string; agentId: string; dateOnly: string; monthIdx: number }> = {};
 
     const defaultBillableTypes = new Set([
       "remote support", "on-site support", "project", "documentation",
@@ -364,7 +395,8 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
 
-      // Daily aggregation for Worked Hours
+      // Daily aggregation for Worked Hours (fallback if no Timesheet data)
+      // Store agentId so we can look up Timesheet data later
       const startVal = pick<string>(ev, ["start_date", "startdate", "startDate"]);
       const endVal = pick<string>(ev, ["end_date", "enddate", "endDate"]);
       if (startVal && endVal) {
@@ -372,7 +404,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         const e = new Date(endVal).getTime();
         if (!isNaN(s) && !isNaN(e)) {
           const dayKey = `${empId}:${dateOnly}`;
-          const d = (dailyAgg[dayKey] ||= { start: Infinity, end: -Infinity, breaks: 0, empId, monthIdx: idx });
+          const d = (dailyAgg[dayKey] ||= { start: Infinity, end: -Infinity, breaks: 0, empId, agentId, dateOnly, monthIdx: idx });
           if (s < d.start) d.start = s;
           if (e > d.end) d.end = e;
           if (isExcludedByBreak) d.breaks += raw;
@@ -381,15 +413,33 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     }
 
     // Sum up daily worked hours
+    // Priority: Use Timesheet data (manual clock-in/out) if available, otherwise fall back to TimesheetEvent
     for (const d of Object.values(dailyAgg)) {
-      if (d.start === Infinity || d.end === -Infinity) continue;
-      const spanMs = d.end - d.start;
-      if (spanMs < 0) continue;
-      const spanHours = spanMs / (1000 * 60 * 60);
-      const w = Math.max(0, spanHours - d.breaks);
-      const key = `${d.empId}:${d.monthIdx}`;
-      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
-      cur.worked += w;
+      // Check if we have Timesheet data for this agent+date
+      const tsKey = `${d.agentId}:${d.dateOnly}`;
+      const tsData = timesheetMap[tsKey];
+      
+      let workedHours = 0;
+      
+      if (tsData && tsData.end > tsData.start) {
+        // Use Timesheet data (manual clock-in/clock-out)
+        const spanMs = tsData.end - tsData.start;
+        const spanHours = spanMs / (1000 * 60 * 60);
+        workedHours = Math.max(0, spanHours - tsData.breaks);
+      } else if (d.start !== Infinity && d.end !== -Infinity) {
+        // Fall back to TimesheetEvent data (earliest/latest logged entry)
+        const spanMs = d.end - d.start;
+        if (spanMs >= 0) {
+          const spanHours = spanMs / (1000 * 60 * 60);
+          workedHours = Math.max(0, spanHours - d.breaks);
+        }
+      }
+      
+      if (workedHours > 0) {
+        const key = `${d.empId}:${d.monthIdx}`;
+        const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
+        cur.worked += workedHours;
+      }
     }
 
     // Upsert into month_entries
