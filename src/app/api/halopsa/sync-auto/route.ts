@@ -276,6 +276,19 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       console.warn("Could not fetch Timesheet data, falling back to TimesheetEvent:", e);
     }
     
+    // Fetch Holiday entries (agent absences: sickness, vacation, etc.)
+    // The Holiday endpoint contains both:
+    // - Agent-specific absences (agent_id > 0): sickness, vacation, etc.
+    // - Company-wide holidays (agent_id = 0): public holidays like "All Saints' Day"
+    // We only count agent-specific absences (agent_id > 0) for absence hours
+    let holidays: any[] = [];
+    try {
+      holidays = await haloFetch("Holiday", { query });
+      console.log(`Fetched ${holidays.length} holiday entries for absence tracking`);
+    } catch (e) {
+      console.warn("Could not fetch Holiday data:", e);
+    }
+    
     // Build a map of agent+date -> { workHours, unloggedHours } from Timesheet
     // Halo's Timesheet entity has pre-calculated work_hours and unlogged_hours
     const timesheetMap: Record<string, { workHours: number; unloggedHours: number }> = {};
@@ -292,6 +305,77 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const key = `${agentId}:${dateOnly}`;
       timesheetMap[key] = { workHours, unloggedHours };
     }
+    
+    // Build a map of empId+monthIdx -> absenceHours from Holiday endpoint
+    // Holiday entries with agent_id > 0 are agent-specific absences (sickness, vacation, etc.)
+    // Holiday entries with agent_id = 0 are company-wide holidays (public holidays)
+    const absenceMap: Record<string, number> = {};
+    const todayForAbsence = new Date().toISOString().slice(0, 10);
+    let agentHolidayCount = 0;
+    
+    for (const hol of holidays) {
+      // Only count agent-specific absences (agent_id > 0)
+      // Skip company-wide holidays (agent_id = 0)
+      const agentId = `${pick<any>(hol, ["agent_id", "agentId"]) ?? "0"}`.trim();
+      if (agentId === "0" || agentId === "") continue;
+      
+      const empId = finalAgentMapById[agentId];
+      if (!empId) continue;
+      
+      // Use "date" field (start date) from Holiday endpoint
+      const startDate = pick<string>(hol, ["date", "start_date", "startDate"]) || "";
+      const endDate = pick<string>(hol, ["end_date", "endDate"]) || "";
+      const isAllDay = pick<any>(hol, ["allday", "all_day", "isAllDay"]);
+      const duration = Number(pick<any>(hol, ["duration"]) ?? 0); // Duration in hours from Halo
+      const holidayName = pick<string>(hol, ["name"]) || "";
+      
+      if (!startDate) continue;
+      const startDateOnly = startDate.length >= 10 ? startDate.slice(0, 10) : startDate;
+      
+      // Skip future dates
+      if (startDateOnly > todayForAbsence) continue;
+      
+      // Calculate hours for this absence
+      // Priority: use duration field if available, otherwise calculate from dates
+      let absenceHours = 0;
+      
+      if (duration > 0) {
+        // Use the duration field from Halo (already in hours)
+        absenceHours = duration;
+      } else if (isAllDay) {
+        // All-day absence = 8 hours per day
+        if (endDate && endDate !== startDate) {
+          // Multi-day absence
+          const s = new Date(startDateOnly).getTime();
+          const eDate = endDate.length >= 10 ? endDate.slice(0, 10) : endDate;
+          const e = new Date(eDate).getTime();
+          if (!isNaN(s) && !isNaN(e) && e >= s) {
+            const days = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
+            absenceHours = days * 8;
+          } else {
+            absenceHours = 8;
+          }
+        } else {
+          absenceHours = 8;
+        }
+      } else if (startDate && endDate) {
+        // Calculate duration from start to end time
+        const s = new Date(startDate).getTime();
+        const e = new Date(endDate).getTime();
+        if (!isNaN(s) && !isNaN(e) && e > s) {
+          absenceHours = (e - s) / (1000 * 60 * 60); // Convert ms to hours
+        }
+      }
+      
+      if (absenceHours > 0) {
+        agentHolidayCount++;
+        const monthIdx = fiscalMonthIndex(startDateOnly);
+        const key = `${empId}:${monthIdx}`;
+        absenceMap[key] = (absenceMap[key] || 0) + absenceHours;
+        console.log(`Holiday absence: ${holidayName} for agent ${agentId} -> emp ${empId}, ${absenceHours}h on ${startDateOnly}`);
+      }
+    }
+    console.log(`Processed ${agentHolidayCount} agent-specific holiday entries into ${Object.keys(absenceMap).length} month buckets`);
 
     // Load billable charge types
     let billableTypeSet: Set<string> | null = null;
@@ -464,6 +548,14 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         cur.unloggedHours += unloggedHours;
       }
     }
+    
+    // Merge absenceMap (from Appointments + HolidayRequest) into agg
+    // This is critical - the absenceMap was being built but never added to the final aggregation!
+    for (const [key, hours] of Object.entries(absenceMap)) {
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 });
+      cur.absenceHours += hours;
+    }
+    console.log(`Merged ${Object.keys(absenceMap).length} absence entries into aggregation`);
 
     // Upsert into month_entries
     const keys = Object.keys(agg);
