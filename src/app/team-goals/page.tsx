@@ -521,11 +521,11 @@ export default function TeamGoalsPage() {
                       <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-primary)]/10">
                         <span className="text-lg">⭐</span>
                       </div>
-                      <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Feedback Score</h3>
+                      <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Positive Feedback</h3>
                       <div className={`text-3xl font-bold ${getMetricColor(feedbackScore ?? 0, personalFeedbackGoal)}`}>
-                        {feedbackScore != null ? feedbackScore.toFixed(1) : "--"}
+                        {feedbackScore != null ? `${feedbackScore.toFixed(1)}%` : "--"}
                       </div>
-                      <div className="text-xs text-[var(--color-text)]/60 font-medium">Goal: {personalFeedbackGoal.toFixed(1)}</div>
+                      <div className="text-xs text-[var(--color-text)]/60 font-medium">Goal: {personalFeedbackGoal.toFixed(1)}%</div>
                       <ProgressBar
                         value={
                           feedbackScore != null ? pctProgress(feedbackScore, personalFeedbackGoal || (feedbackScore || 1)) : 0

@@ -648,29 +648,56 @@ async function syncFeedbackScores(agentMap: Record<string, string>): Promise<{ o
       return { ok: true, synced: 0 };
     }
     
-    // Fetch tickets to map ticket_id -> agent_id
+    // Get unique ticket IDs from feedback
+    const feedbackTicketIds = new Set(allFeedback.map(fb => fb.ticket_id).filter(Boolean));
+    console.log(`Need agent info for ${feedbackTicketIds.size} unique tickets from feedback`);
+    
+    // Fetch individual tickets by ID to get agent_id
+    // This is slower but ensures we get all tickets with feedback
     const ticketAgentMap: Record<number, number> = {};
+    const ticketIdArray = Array.from(feedbackTicketIds);
+    
     try {
-      const ticketsData = await haloFetch("Tickets", { 
-        query: { 
-          count: "10000",
-          includeclosed: "true"
-        } 
-      });
-      const tickets = Array.isArray(ticketsData) ? ticketsData : (ticketsData?.tickets || []);
-      for (const t of tickets) {
-        if (t.id && t.agent_id) {
-          ticketAgentMap[t.id] = t.agent_id;
+      // Fetch tickets in parallel batches
+      const BATCH_SIZE = 50;
+      for (let i = 0; i < ticketIdArray.length; i += BATCH_SIZE) {
+        const batchIds = ticketIdArray.slice(i, i + BATCH_SIZE);
+        
+        // Fetch each ticket individually in parallel
+        const ticketPromises = batchIds.map(async (ticketId) => {
+          try {
+            const ticketData = await haloFetch(`Tickets/${ticketId}`, {});
+            if (ticketData && ticketData.agent_id) {
+              return { id: ticketId, agent_id: ticketData.agent_id };
+            }
+          } catch {
+            // Ticket may not exist anymore
+          }
+          return null;
+        });
+        
+        const results = await Promise.all(ticketPromises);
+        for (const r of results) {
+          if (r) {
+            ticketAgentMap[r.id] = r.agent_id;
+          }
+        }
+        
+        // Log progress every 200 tickets
+        if ((i + BATCH_SIZE) % 200 === 0 || i + BATCH_SIZE >= ticketIdArray.length) {
+          console.log(`Fetched ${Math.min(i + BATCH_SIZE, ticketIdArray.length)}/${ticketIdArray.length} tickets...`);
         }
       }
-      console.log(`Built ticket->agent map with ${Object.keys(ticketAgentMap).length} entries`);
+      console.log(`Built ticket->agent map with ${Object.keys(ticketAgentMap).length} entries from ${ticketIdArray.length} feedback tickets`);
     } catch (e) {
       console.warn("Could not fetch Tickets for feedback mapping:", e);
       return { ok: true, synced: 0 };
     }
     
-    // Calculate average feedback score per agent
-    const agentScores: Record<number, { total: number; count: number }> = {};
+    // Calculate positive feedback percentage per agent
+    // In HaloPSA: score 1 = best (positive), higher scores = worse
+    // We calculate: (count of score=1) / (total count) * 100 = positive %
+    const agentScores: Record<number, { positiveCount: number; totalCount: number }> = {};
     
     for (const fb of allFeedback) {
       const ticketId = fb.ticket_id;
@@ -681,24 +708,30 @@ async function syncFeedbackScores(agentMap: Record<string, string>): Promise<{ o
       if (!agentId) continue;
       
       if (!agentScores[agentId]) {
-        agentScores[agentId] = { total: 0, count: 0 };
+        agentScores[agentId] = { positiveCount: 0, totalCount: 0 };
       }
-      agentScores[agentId].total += score;
-      agentScores[agentId].count++;
+      agentScores[agentId].totalCount++;
+      if (score === 1) {
+        agentScores[agentId].positiveCount++;
+      }
     }
     
     // Build upsert payload for employee_feedback table
+    // average_score now represents positive feedback percentage (0-100)
     const payload: { employee_id: string; average_score: number; feedback_count: number; last_synced_at: string }[] = [];
     
     for (const [agentId, data] of Object.entries(agentScores)) {
       const empId = agentToEmployee[Number(agentId)];
       if (!empId) continue;
       
-      const avgScore = data.count > 0 ? Math.round((data.total / data.count) * 100) / 100 : 0;
+      // Calculate percentage of positive (score=1) feedback
+      const positivePct = data.totalCount > 0 
+        ? Math.round((data.positiveCount / data.totalCount) * 1000) / 10 
+        : 0;
       payload.push({
         employee_id: empId,
-        average_score: avgScore,
-        feedback_count: data.count,
+        average_score: positivePct, // Now stores percentage (0-100)
+        feedback_count: data.totalCount,
         last_synced_at: new Date().toISOString(),
       });
     }
