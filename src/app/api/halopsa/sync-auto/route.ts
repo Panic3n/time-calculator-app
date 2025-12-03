@@ -19,17 +19,26 @@ export async function GET(req: NextRequest) {
     // Verify this is a Vercel cron request using the standard header
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
+    const url = new URL(req.url);
+    const secretParam = url.searchParams.get("secret");
     
     // Debug logging
     console.log("Cron request received:", {
       hasAuthHeader: !!authHeader,
       hasCronSecret: !!cronSecret,
-      authHeaderPrefix: authHeader?.substring(0, 20),
+      hasSecretParam: !!secretParam,
     });
     
-    // Allow if: no CRON_SECRET is set (dev mode), or auth header matches
-    if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn("Unauthorized cron request - header mismatch");
+    // Allow if:
+    // 1. No CRON_SECRET is set (dev mode)
+    // 2. Auth header matches (Vercel cron)
+    // 3. Query param ?secret=XXX matches (manual trigger)
+    const isAuthorized = !cronSecret 
+      || authHeader === `Bearer ${cronSecret}`
+      || secretParam === cronSecret;
+    
+    if (!isAuthorized) {
+      console.warn("Unauthorized cron request - no valid auth");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
