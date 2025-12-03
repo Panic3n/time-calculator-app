@@ -276,22 +276,21 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       console.warn("Could not fetch Timesheet data, falling back to TimesheetEvent:", e);
     }
     
-    // Build a map of agent+date -> work_hours from Timesheet
-    // Halo's Timesheet entity has pre-calculated work_hours which is exactly what we need
-    const timesheetMap: Record<string, { workHours: number }> = {};
+    // Build a map of agent+date -> { workHours, unloggedHours } from Timesheet
+    // Halo's Timesheet entity has pre-calculated work_hours and unlogged_hours
+    const timesheetMap: Record<string, { workHours: number; unloggedHours: number }> = {};
     for (const ts of timesheets) {
       const agentId = `${pick<any>(ts, ["agent_id", "agentId"]) ?? ""}`.trim();
       const dateVal = pick<string>(ts, ["date"]) || "";
       if (!agentId || !dateVal) continue;
       const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
       
-      // work_hours is the pre-calculated worked hours from Halo
+      // work_hours and unlogged_hours from Halo Timesheet
       const workHours = Number(pick<any>(ts, ["work_hours", "workHours"]) ?? 0);
+      const unloggedHours = Number(pick<any>(ts, ["unlogged_hours", "unloggedHours"]) ?? 0);
       
-      if (workHours > 0) {
-        const key = `${agentId}:${dateOnly}`;
-        timesheetMap[key] = { workHours };
-      }
+      const key = `${agentId}:${dateOnly}`;
+      timesheetMap[key] = { workHours, unloggedHours };
     }
 
     // Load billable charge types
@@ -327,7 +326,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     } catch {}
 
     // Aggregate per agent + fiscal month
-    type Totals = { logged: number; billed: number; worked: number; breakHours: number; absenceHours: number };
+    type Totals = { logged: number; billed: number; worked: number; breakHours: number; absenceHours: number; unloggedHours: number };
     const agg: Record<string, Totals> = {};
     const dailyAgg: Record<string, { start: number; end: number; breaks: number; empId: string; agentId: string; dateOnly: string; monthIdx: number }> = {};
 
@@ -400,7 +399,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const excluded = isExcludedByCharge || isExcludedByBreak || isExcludedByHolidayId;
       const loggedAdd = raw > 0 && !excluded ? raw : 0;
 
-      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0 });
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 });
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
       
@@ -437,10 +436,16 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const tsData = timesheetMap[tsKey];
       
       let workedHours = 0;
+      let unloggedHours = 0;
       
-      if (tsData && tsData.workHours > 0) {
-        // Use Timesheet work_hours (pre-calculated by Halo)
-        workedHours = tsData.workHours;
+      if (tsData) {
+        // Use Timesheet data (pre-calculated by Halo)
+        if (tsData.workHours > 0) {
+          workedHours = tsData.workHours;
+        }
+        if (tsData.unloggedHours > 0) {
+          unloggedHours = tsData.unloggedHours;
+        }
       } else if (d.start !== Infinity && d.end !== -Infinity) {
         // Fall back to TimesheetEvent data (earliest/latest logged entry)
         const spanMs = d.end - d.start;
@@ -450,10 +455,13 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         }
       }
       
+      const key = `${d.empId}:${d.monthIdx}`;
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 });
       if (workedHours > 0) {
-        const key = `${d.empId}:${d.monthIdx}`;
-        const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0 });
         cur.worked += workedHours;
+      }
+      if (unloggedHours > 0) {
+        cur.unloggedHours += unloggedHours;
       }
     }
 
@@ -485,6 +493,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         worked: Math.round(totals.worked * 100) / 100,
         break_hours: Math.round(totals.breakHours * 100) / 100,
         absence_hours: Math.round(totals.absenceHours * 100) / 100,
+        unlogged_hours: Math.round(totals.unloggedHours * 100) / 100,
       };
     });
 

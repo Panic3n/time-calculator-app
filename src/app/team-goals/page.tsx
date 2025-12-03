@@ -18,6 +18,7 @@ type TeamGoals = {
   personal_billed_pct_goal: number;
   personal_attendance_pct_goal: number;
   personal_feedback_score_goal: number;
+  personal_unlogged_pct_goal: number;
 };
 
 export default function TeamGoalsPage() {
@@ -113,7 +114,7 @@ export default function TeamGoalsPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("team_goals")
-          .select("id, fiscal_year_id, department_tb_goal, team_billed_pct_goal, team_billable_hours_goal, team_avg_rate_goal, personal_billed_pct_goal, personal_attendance_pct_goal, personal_feedback_score_goal")
+          .select("id, fiscal_year_id, department_tb_goal, team_billed_pct_goal, team_billable_hours_goal, team_avg_rate_goal, personal_billed_pct_goal, personal_attendance_pct_goal, personal_feedback_score_goal, personal_unlogged_pct_goal")
           .eq("fiscal_year_id", yearId)
           .limit(1);
         if (error) throw error;
@@ -160,7 +161,7 @@ export default function TeamGoalsPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("month_entries")
-          .select("employee_id, fiscal_year_id, month_index, worked, logged, billed")
+          .select("employee_id, fiscal_year_id, month_index, worked, logged, billed, unlogged_hours")
           .eq("employee_id", employee.id)
           .eq("fiscal_year_id", yearId);
         if (error) throw error;
@@ -201,18 +202,20 @@ export default function TeamGoalsPage() {
   }, [entriesTeam, includedIds]);
 
   const personalTotals = useMemo(() => {
-    if (!entriesPersonal.length) return { worked: 0, logged: 0, billed: 0, billedPct: 0 };
+    if (!entriesPersonal.length) return { worked: 0, logged: 0, billed: 0, unloggedHours: 0, billedPct: 0, unloggedPct: 0 };
     const agg = entriesPersonal.reduce(
       (acc, e) => {
         acc.worked += Number(e.worked || 0);
         acc.logged += Number(e.logged || 0);
         acc.billed += Number(e.billed || 0);
+        acc.unloggedHours += Number(e.unlogged_hours || 0);
         return acc;
       },
-      { worked: 0, logged: 0, billed: 0 }
+      { worked: 0, logged: 0, billed: 0, unloggedHours: 0 }
     );
     const billedPct = agg.worked ? Math.round((agg.billed / agg.worked) * 1000) / 10 : 0;
-    return { ...agg, billedPct };
+    const unloggedPct = agg.worked ? Math.round((agg.unloggedHours / agg.worked) * 1000) / 10 : 0;
+    return { ...agg, billedPct, unloggedPct };
   }, [entriesPersonal]);
 
   const attendancePct = useMemo(() => {
@@ -283,6 +286,7 @@ export default function TeamGoalsPage() {
   const personalBilledGoal = goals?.personal_billed_pct_goal ?? 0;
   const personalAttendanceGoal = goals?.personal_attendance_pct_goal ?? 0;
   const personalFeedbackGoal = goals?.personal_feedback_score_goal ?? 0;
+  const personalUnloggedGoal = goals?.personal_unlogged_pct_goal ?? 10;
 
   const pctProgress = (value: number, goal: number) => {
     if (!goal) return 0;
@@ -440,7 +444,7 @@ export default function TeamGoalsPage() {
               <h2 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">Personal Metrics</h2>
               <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
             </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 lg:gap-8">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
               <div className="group relative">
                 <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                 <Card className="aspect-square relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 group-hover:border-[var(--color-primary)]/30">
@@ -474,6 +478,37 @@ export default function TeamGoalsPage() {
                       </div>
                       <div className="text-xs text-[var(--color-text)]/60 font-medium">Goal: {personalAttendanceGoal.toFixed(1)}%</div>
                       <ProgressBar value={pctProgress(attendancePct, personalAttendanceGoal)} />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="group relative">
+                <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                <Card className="aspect-square relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 group-hover:border-[var(--color-primary)]/30">
+                  <CardContent className="h-full flex items-center justify-center p-6">
+                    <div className="space-y-4 text-center">
+                      <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-primary)]/10">
+                        <span className="text-lg">❓</span>
+                      </div>
+                      <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Unlogged %</h3>
+                      <div className={`text-3xl font-bold ${
+                        // For unlogged, lower is better - invert color logic
+                        personalTotals.unloggedPct <= personalUnloggedGoal ? 'text-green-500' 
+                        : personalTotals.unloggedPct <= personalUnloggedGoal * 1.5 ? 'text-yellow-500' 
+                        : 'text-red-500'
+                      }`}>
+                        {personalTotals.unloggedPct.toFixed(1)}%
+                      </div>
+                      <div className="text-xs text-[var(--color-text)]/60 font-medium">Goal: ≤{personalUnloggedGoal.toFixed(1)}%</div>
+                      <ProgressBar
+                        value={
+                          // Invert progress: 100% when 0 unlogged, 0% when at 2x goal
+                          personalUnloggedGoal > 0 
+                            ? Math.max(0, Math.min(100, 100 - (personalTotals.unloggedPct / personalUnloggedGoal) * 50))
+                            : 100
+                        }
+                      />
                     </div>
                   </CardContent>
                 </Card>

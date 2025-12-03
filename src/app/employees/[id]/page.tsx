@@ -31,6 +31,7 @@ type MonthEntry = {
   billed: number;
   break_hours?: number;
   absence_hours?: number;
+  unlogged_hours?: number;
 };
 
 
@@ -128,9 +129,10 @@ export default function EmployeeDetailPage() {
         acc.billed += e.billed || 0;
         acc.breakHours += e.break_hours || 0;
         acc.absenceHours += e.absence_hours || 0;
+        acc.unloggedHours += e.unlogged_hours || 0;
         return acc;
       },
-      { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0 }
+      { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 }
     );
     const pct = {
       loggedPct: sum.worked ? Math.round((sum.logged / sum.worked) * 1000) / 10 : 0,
@@ -213,7 +215,7 @@ export default function EmployeeDetailPage() {
       if (!employeeId || !yearId) return;
       const { data, error } = await supabaseBrowser
         .from("month_entries")
-        .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours")
+        .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours, unlogged_hours")
         .eq("employee_id", employeeId)
         .eq("fiscal_year_id", yearId);
       if (error) {
@@ -421,7 +423,7 @@ export default function EmployeeDetailPage() {
             <CardTitle>Yearly Summary</CardTitle>
             <CardDescription>Total hours and percentages</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
+          <CardContent className="grid grid-cols-4 md:grid-cols-7 gap-4 text-sm">
             <div>
               <p className="text-slate-500">Worked</p>
               <p className="text-lg font-semibold">{totals.worked.toFixed(1)} h</p>
@@ -441,6 +443,10 @@ export default function EmployeeDetailPage() {
             <div>
               <p className="text-slate-500">Absence</p>
               <p className="text-lg font-semibold">{totals.absenceHours.toFixed(1)} h</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Unlogged</p>
+              <p className="text-lg font-semibold">{totals.unloggedHours.toFixed(1)} h ({totals.worked > 0 ? Math.round((totals.unloggedHours / totals.worked) * 1000) / 10 : 0}%)</p>
             </div>
             <div>
               <p className="text-slate-500">Attendance</p>

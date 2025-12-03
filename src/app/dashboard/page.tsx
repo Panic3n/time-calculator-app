@@ -27,6 +27,7 @@ type MonthEntry = {
   billed: number;
   break_hours?: number;
   absence_hours?: number;
+  unlogged_hours?: number;
 };
 
 type FiscalYear = { id: string; label: string; start_date: string; end_date: string; available_hours?: number };
@@ -54,6 +55,7 @@ type TeamGoals = {
   personal_billed_pct_goal: number;
   personal_logged_pct_goal: number;
   personal_attendance_pct_goal: number;
+  personal_unlogged_pct_goal?: number;
 };
 
 export default function DashboardPage() {
@@ -157,7 +159,7 @@ export default function DashboardPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("month_entries")
-          .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours")
+          .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours, unlogged_hours")
           .eq("employee_id", employee.id)
           .eq("fiscal_year_id", yearId);
 
@@ -195,15 +197,15 @@ export default function DashboardPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("team_goals")
-          .select("personal_billed_pct_goal, personal_logged_pct_goal, personal_attendance_pct_goal")
+          .select("personal_billed_pct_goal, personal_logged_pct_goal, personal_attendance_pct_goal, personal_unlogged_pct_goal")
           .eq("fiscal_year_id", yearId)
           .limit(1);
         if (error) throw error;
         const row = (data as any[])?.[0];
-        setGoals(row || { personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0 });
+        setGoals(row || { personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0, personal_unlogged_pct_goal: 10 });
       } catch (e: any) {
         // Goals not found, use defaults
-        setGoals({ personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0 });
+        setGoals({ personal_billed_pct_goal: 0, personal_logged_pct_goal: 0, personal_attendance_pct_goal: 0, personal_unlogged_pct_goal: 10 });
       }
     };
     loadGoals();
@@ -241,9 +243,10 @@ export default function DashboardPage() {
       acc.billed += e.billed || 0;
       acc.breakHours += e.break_hours || 0;
       acc.absenceHours += e.absence_hours || 0;
+      acc.unloggedHours += e.unlogged_hours || 0;
       return acc;
     },
-    { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0 }
+    { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 }
   );
 
   const pct = {
@@ -334,7 +337,7 @@ export default function DashboardPage() {
             <p className="text-sm text-[var(--color-text)]/60 font-medium mt-1">Total hours and percentages for {years.find(y => y.id === yearId)?.label}</p>
             <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 lg:gap-6">
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-4 lg:gap-5">
             <div className="group relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
@@ -384,14 +387,19 @@ export default function DashboardPage() {
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
                 <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--color-primary)]/10">
-                  <span className="text-base">📝</span>
+                  <span className="text-base">❓</span>
                 </div>
-                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Logged</h3>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Unlogged</h3>
                 <div className="flex-1 flex flex-col justify-center">
-                  <div className={`text-2xl font-bold ${getMetricColor(pct.loggedPct, goals?.personal_logged_pct_goal ?? 0)}`}>
-                    {pct.loggedPct}%
+                  <div className={`text-2xl font-bold ${(() => {
+                    const unloggedPct = totals.worked > 0 ? Math.round((totals.unloggedHours / totals.worked) * 1000) / 10 : 0;
+                    const goal = goals?.personal_unlogged_pct_goal ?? 10;
+                    // For unlogged, lower is better - so invert the color logic
+                    return unloggedPct <= goal ? 'text-green-400' : unloggedPct <= goal * 1.5 ? 'text-yellow-400' : 'text-red-400';
+                  })()}`}>
+                    {totals.worked > 0 ? Math.round((totals.unloggedHours / totals.worked) * 1000) / 10 : 0}%
                   </div>
-                  <div className="text-xs text-[var(--color-text)]/60 font-medium mt-1">{totals.logged.toFixed(1)}h</div>
+                  <div className="text-xs text-[var(--color-text)]/60 font-medium mt-1">{totals.unloggedHours.toFixed(1)}h</div>
                 </div>
               </div>
             </div>
