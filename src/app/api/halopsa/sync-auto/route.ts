@@ -276,25 +276,21 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       console.warn("Could not fetch Timesheet data, falling back to TimesheetEvent:", e);
     }
     
-    // Build a map of agent+date -> { start_time, end_time, break_hours } from Timesheet
-    const timesheetMap: Record<string, { start: number; end: number; breaks: number }> = {};
+    // Build a map of agent+date -> work_hours from Timesheet
+    // Halo's Timesheet entity has pre-calculated work_hours which is exactly what we need
+    const timesheetMap: Record<string, { workHours: number }> = {};
     for (const ts of timesheets) {
       const agentId = `${pick<any>(ts, ["agent_id", "agentId"]) ?? ""}`.trim();
       const dateVal = pick<string>(ts, ["date"]) || "";
       if (!agentId || !dateVal) continue;
       const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
       
-      const startTime = pick<string>(ts, ["start_time", "startTime"]);
-      const endTime = pick<string>(ts, ["end_time", "endTime"]);
-      const breakHours = Number(pick<any>(ts, ["break_hours", "breakHours"]) ?? 0);
+      // work_hours is the pre-calculated worked hours from Halo
+      const workHours = Number(pick<any>(ts, ["work_hours", "workHours"]) ?? 0);
       
-      if (startTime && endTime) {
-        const s = new Date(startTime).getTime();
-        const e = new Date(endTime).getTime();
-        if (!isNaN(s) && !isNaN(e)) {
-          const key = `${agentId}:${dateOnly}`;
-          timesheetMap[key] = { start: s, end: e, breaks: breakHours };
-        }
+      if (workHours > 0) {
+        const key = `${agentId}:${dateOnly}`;
+        timesheetMap[key] = { workHours };
       }
     }
 
@@ -413,7 +409,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     }
 
     // Sum up daily worked hours
-    // Priority: Use Timesheet data (manual clock-in/out) if available, otherwise fall back to TimesheetEvent
+    // Priority: Use Timesheet work_hours if available, otherwise fall back to TimesheetEvent calculation
     for (const d of Object.values(dailyAgg)) {
       // Check if we have Timesheet data for this agent+date
       const tsKey = `${d.agentId}:${d.dateOnly}`;
@@ -421,11 +417,9 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       
       let workedHours = 0;
       
-      if (tsData && tsData.end > tsData.start) {
-        // Use Timesheet data (manual clock-in/clock-out)
-        const spanMs = tsData.end - tsData.start;
-        const spanHours = spanMs / (1000 * 60 * 60);
-        workedHours = Math.max(0, spanHours - tsData.breaks);
+      if (tsData && tsData.workHours > 0) {
+        // Use Timesheet work_hours (pre-calculated by Halo)
+        workedHours = tsData.workHours;
       } else if (d.start !== Infinity && d.end !== -Infinity) {
         // Fall back to TimesheetEvent data (earliest/latest logged entry)
         const spanMs = d.end - d.start;

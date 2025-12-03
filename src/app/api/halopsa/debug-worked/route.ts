@@ -59,24 +59,19 @@ export async function POST(req: NextRequest) {
       console.warn("Could not fetch Timesheet data:", e);
     }
     
-    // Build a map of agentId+date -> { start, end, breaks } from Timesheet
-    const timesheetMap: Record<string, { start: number; end: number; breaks: number }> = {};
+    // Build a map of agentId+date -> work_hours from Timesheet
+    // Halo's Timesheet has pre-calculated work_hours
+    const timesheetMap: Record<string, { workHours: number }> = {};
     for (const ts of timesheets) {
       const tsAgentId = `${pick<any>(ts, ["agent_id", "agentId"]) ?? ""}`.trim();
       const dateVal = pick<string>(ts, ["date"]) || "";
       if (!tsAgentId || !dateVal) continue;
       const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
       
-      const startTime = pick<string>(ts, ["start_time", "startTime"]);
-      const endTime = pick<string>(ts, ["end_time", "endTime"]);
-      const breakHours = Number(pick<any>(ts, ["break_hours", "breakHours"]) ?? 0);
+      const workHours = Number(pick<any>(ts, ["work_hours", "workHours"]) ?? 0);
       
-      if (startTime && endTime) {
-        const s = new Date(startTime).getTime();
-        const e = new Date(endTime).getTime();
-        if (!isNaN(s) && !isNaN(e)) {
-          timesheetMap[`${tsAgentId}:${dateOnly}`] = { start: s, end: e, breaks: breakHours };
-        }
+      if (workHours > 0) {
+        timesheetMap[`${tsAgentId}:${dateOnly}`] = { workHours };
       }
     }
 
@@ -157,26 +152,23 @@ export async function POST(req: NextRequest) {
         });
       }
       
-      // Check for Timesheet data (manual clock-in/clock-out)
+      // Check for Timesheet data (pre-calculated work_hours from Halo)
       const tsKey = `${dayAgentId}:${date}`;
       const tsData = timesheetMap[tsKey];
       
       let spanHours = 0;
       let worked = 0;
       let usedTimesheet = false;
-      let timesheetStart: string | null = null;
-      let timesheetEnd: string | null = null;
-      let timesheetBreaks = 0;
+      let timesheetWorkHours = 0;
       
-      if (tsData && tsData.end > tsData.start) {
-        // Use Timesheet data (manual clock-in/clock-out)
+      if (tsData && tsData.workHours > 0) {
+        // Use Timesheet work_hours (pre-calculated by Halo)
         usedTimesheet = true;
-        timesheetStart = new Date(tsData.start).toISOString();
-        timesheetEnd = new Date(tsData.end).toISOString();
-        timesheetBreaks = tsData.breaks;
-        const spanMs = tsData.end - tsData.start;
-        spanHours = spanMs / (1000 * 60 * 60);
-        worked = Math.max(0, spanHours - tsData.breaks);
+        timesheetWorkHours = tsData.workHours;
+        worked = tsData.workHours;
+        // For display, calculate span from TimesheetEvent data
+        const spanMs = latest - earliest;
+        spanHours = spanMs > 0 ? spanMs / (1000 * 60 * 60) : 0;
       } else {
         // Fall back to TimesheetEvent data
         const spanMs = latest - earliest;
@@ -187,13 +179,11 @@ export async function POST(req: NextRequest) {
       dailyBreakdown.push({
         date,
         usedTimesheet,
-        timesheetStart,
-        timesheetEnd,
-        timesheetBreaks,
+        timesheetWorkHours,
         earliestStart: earliest !== Infinity ? new Date(earliest).toISOString() : null,
         latestEnd: latest !== -Infinity ? new Date(latest).toISOString() : null,
         spanHours: Math.round(spanHours * 100) / 100,
-        totalBreaks: Math.round((usedTimesheet ? timesheetBreaks : totalBreaks) * 100) / 100,
+        totalBreaks: Math.round(totalBreaks * 100) / 100,
         workedHours: Math.round(worked * 100) / 100,
         entryCount: entries.length,
         entries,
