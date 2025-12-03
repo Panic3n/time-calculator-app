@@ -377,6 +377,10 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const breakTypeRaw = pick<any>(ev, ["break_type", "breakType"]);
       const breakType = `${breakTypeRaw ?? ""}`.trim().toLowerCase();
       const holidayId = pick<any>(ev, ["holiday_id", "holidayId"]);
+      
+      // Check for "all day" entries (vacation, sick, etc. logged as full day)
+      const isAllDay = pick<any>(ev, ["allday", "all_day", "isAllDay", "is_all_day"]);
+      const allDayHours = 8; // All-day entries count as 8 hours
 
       const isExcludedByCharge = (excludedLoggedSet ?? defaultExcludedLogged).has(ct);
       const breakTypeNum = Number(breakTypeRaw);
@@ -385,8 +389,13 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const holidayIdNum = Number(holidayId);
       const isExcludedByHolidayId = Number.isFinite(holidayIdNum) && holidayIdNum > 0;
       
-      // Determine if this is an absence entry (holiday/vacation)
-      const isAbsence = isExcludedByHolidayId || ct === "holiday" || ct === "vacation" || ct === "sick leave";
+      // Absence = any entry with a holiday_id (vacation, sick, dentist, etc.)
+      const isAbsence = isExcludedByHolidayId;
+      
+      // Calculate absence hours: use raw time, or 8h if it's an all-day entry with 0 hours
+      const absenceHoursToAdd = isAbsence 
+        ? (raw > 0 ? raw : (isAllDay ? allDayHours : 0))
+        : 0;
       
       const excluded = isExcludedByCharge || isExcludedByBreak || isExcludedByHolidayId;
       const loggedAdd = raw > 0 && !excluded ? raw : 0;
@@ -399,8 +408,8 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       if (isExcludedByBreak && raw > 0) {
         cur.breakHours += raw;
       }
-      if (isAbsence && raw > 0) {
-        cur.absenceHours += raw;
+      if (absenceHoursToAdd > 0) {
+        cur.absenceHours += absenceHoursToAdd;
       }
 
       // Daily aggregation for Worked Hours (fallback if no Timesheet data)
