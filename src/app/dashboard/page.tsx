@@ -239,9 +239,11 @@ export default function DashboardPage() {
       acc.worked += e.worked || 0;
       acc.logged += e.logged || 0;
       acc.billed += e.billed || 0;
+      acc.breakHours += e.break_hours || 0;
+      acc.absenceHours += e.absence_hours || 0;
       return acc;
     },
-    { worked: 0, logged: 0, billed: 0 }
+    { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0 }
   );
 
   const pct = {
@@ -332,17 +334,17 @@ export default function DashboardPage() {
             <p className="text-sm text-[var(--color-text)]/60 font-medium mt-1">Total hours and percentages for {years.find(y => y.id === yearId)?.label}</p>
             <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 lg:gap-8">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 lg:gap-6">
             <div className="group relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-6 space-y-4 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-primary)]/10">
-                  <span className="text-lg">⏰</span>
+              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--color-primary)]/10">
+                  <span className="text-base">⏰</span>
                 </div>
-                <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Worked Hours</h3>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Worked</h3>
                 <div className="flex-1 flex flex-col justify-center">
-                  <div className="text-3xl font-bold text-[var(--color-text)]">
-                    {totals.worked.toFixed(1)} h
+                  <div className="text-2xl font-bold text-[var(--color-text)]">
+                    {totals.worked.toFixed(1)}h
                   </div>
                 </div>
               </div>
@@ -350,45 +352,75 @@ export default function DashboardPage() {
 
             <div className="group relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-6 space-y-4 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-primary)]/10">
-                  <span className="text-lg">📝</span>
+              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--color-primary)]/10">
+                  <span className="text-base">☕</span>
                 </div>
-                <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Logged</h3>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Breaks</h3>
                 <div className="flex-1 flex flex-col justify-center">
-                  <div className={`text-3xl font-bold ${getMetricColor(pct.loggedPct, goals?.personal_logged_pct_goal ?? 0)}`}>
+                  <div className="text-2xl font-bold text-[var(--color-text)]">
+                    {totals.breakHours.toFixed(1)}h
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--color-primary)]/10">
+                  <span className="text-base">🏖️</span>
+                </div>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Absence</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-2xl font-bold text-[var(--color-text)]">
+                    {totals.absenceHours.toFixed(1)}h
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--color-primary)]/10">
+                  <span className="text-base">📝</span>
+                </div>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Logged</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className={`text-2xl font-bold ${getMetricColor(pct.loggedPct, goals?.personal_logged_pct_goal ?? 0)}`}>
                     {pct.loggedPct}%
                   </div>
-                  <div className="text-xs text-[var(--color-text)]/60 font-medium mt-2">{totals.logged.toFixed(1)} h</div>
+                  <div className="text-xs text-[var(--color-text)]/60 font-medium mt-1">{totals.logged.toFixed(1)}h</div>
                 </div>
               </div>
             </div>
 
             <div className="group relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-6 space-y-4 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-primary)]/10">
-                  <span className="text-lg">💼</span>
+              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--color-primary)]/10">
+                  <span className="text-base">💼</span>
                 </div>
-                <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Billed</h3>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Billed</h3>
                 <div className="flex-1 flex flex-col justify-center">
-                  <div className={`text-3xl font-bold ${getMetricColor(pct.billedPct, goals?.personal_billed_pct_goal ?? 0)}`}>
+                  <div className={`text-2xl font-bold ${getMetricColor(pct.billedPct, goals?.personal_billed_pct_goal ?? 0)}`}>
                     {pct.billedPct}%
                   </div>
-                  <div className="text-xs text-[var(--color-text)]/60 font-medium mt-2">{totals.billed.toFixed(1)} h</div>
+                  <div className="text-xs text-[var(--color-text)]/60 font-medium mt-1">{totals.billed.toFixed(1)}h</div>
                 </div>
               </div>
             </div>
 
             <div className="group relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-6 space-y-4 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
-                <div className="inline-flex items-center justify-center w-12 h-12 rounded-full bg-[var(--color-primary)]/10">
-                  <span className="text-lg">📊</span>
+              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-[var(--color-primary)]/10">
+                  <span className="text-base">📊</span>
                 </div>
-                <h3 className="text-sm font-semibold text-[var(--color-text)]/80">Attendance</h3>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Attendance</h3>
                 <div className="flex-1 flex flex-col justify-center">
-                  <div className={`text-3xl font-bold ${getMetricColor(
+                  <div className={`text-2xl font-bold ${getMetricColor(
                     attendancePct,
                     goals?.personal_attendance_pct_goal ?? 0
                   )}`}>

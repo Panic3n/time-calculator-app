@@ -126,9 +126,11 @@ export default function EmployeeDetailPage() {
         acc.worked += e.worked || 0;
         acc.logged += e.logged || 0;
         acc.billed += e.billed || 0;
+        acc.breakHours += e.break_hours || 0;
+        acc.absenceHours += e.absence_hours || 0;
         return acc;
       },
-      { worked: 0, logged: 0, billed: 0 }
+      { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0 }
     );
     const pct = {
       loggedPct: sum.worked ? Math.round((sum.logged / sum.worked) * 1000) / 10 : 0,
@@ -419,7 +421,7 @@ export default function EmployeeDetailPage() {
             <CardTitle>Yearly Summary</CardTitle>
             <CardDescription>Total hours and percentages</CardDescription>
           </CardHeader>
-          <CardContent className="grid grid-cols-4 gap-4 text-sm">
+          <CardContent className="grid grid-cols-3 md:grid-cols-6 gap-4 text-sm">
             <div>
               <p className="text-slate-500">Worked</p>
               <p className="text-lg font-semibold">{totals.worked.toFixed(1)} h</p>
@@ -431,6 +433,14 @@ export default function EmployeeDetailPage() {
             <div>
               <p className="text-slate-500">Billed</p>
               <p className="text-lg font-semibold">{totals.billed.toFixed(1)} h ({totals.billedPct}%)</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Breaks</p>
+              <p className="text-lg font-semibold">{totals.breakHours.toFixed(1)} h</p>
+            </div>
+            <div>
+              <p className="text-slate-500">Absence</p>
+              <p className="text-lg font-semibold">{totals.absenceHours.toFixed(1)} h</p>
             </div>
             <div>
               <p className="text-slate-500">Attendance</p>
