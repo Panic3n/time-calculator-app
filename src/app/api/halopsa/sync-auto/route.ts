@@ -213,7 +213,7 @@ function pick<T=any>(obj: any, keys: string[]): T | undefined {
   return undefined;
 }
 
-async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok: boolean; error?: string; readRows?: number; importedRows?: number }> {
+async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok: boolean; error?: string; readRows?: number; skippedFuture?: number; importedRows?: number }> {
   try {
     const { start, end } = deriveFyWindow(fy);
 
@@ -313,7 +313,11 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     const defaultExcludedLogged = new Set(["holiday", "vacation", "break"]);
     const defaultBreaks = new Set(["taking a breather", "lunch break", "non-working hours"]);
 
+    // Get today's date (UTC) to exclude future entries
+    const todayUTC = new Date().toISOString().slice(0, 10);
+
     let readRows = 0;
+    let skippedFuture = 0;
     for (const ev of events) {
       readRows++;
       const agentName = pick<string>(ev, ["agentName", "agent_name", "user_name", "agent", "username", "uname", "name"]) || "";
@@ -327,6 +331,12 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const dateVal = pick<string>(ev, ["day", "date", "entryDate", "start_date", "end_date", "created_at"]) || "";
       if (!dateVal) continue;
       const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
+      
+      // Skip future dates (entries scheduled for dates after today)
+      if (dateOnly > todayUTC) {
+        skippedFuture++;
+        continue;
+      }
       const idx = fiscalMonthIndex(dateOnly);
       const key = `${empId}:${idx}`;
 
@@ -416,7 +426,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       .upsert(payload, { onConflict: "employee_id,fiscal_year_id,month_index" });
     if (upErr) throw upErr;
 
-    return { ok: true, readRows, importedRows: payload.length };
+    return { ok: true, readRows, skippedFuture, importedRows: payload.length };
   } catch (e: any) {
     return { ok: false, error: e?.message ?? "Import failed" };
   }

@@ -57,12 +57,18 @@ export async function POST(req: NextRequest) {
              agentName.toLowerCase().includes(employeeName.toLowerCase());
     });
 
-    // Group by date
+    // Group by date (exclude future dates)
+    const todayUTC = new Date().toISOString().slice(0, 10);
     const byDate: Record<string, any[]> = {};
+    let skippedFuture = 0;
     for (const ev of empEvents) {
       const dateVal = pick<string>(ev, ["day", "date", "entryDate", "start_date"]) || "";
       const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
       if (!dateOnly) continue;
+      if (dateOnly > todayUTC) {
+        skippedFuture++;
+        continue;
+      }
       (byDate[dateOnly] ||= []).push(ev);
     }
 
@@ -138,6 +144,7 @@ export async function POST(req: NextRequest) {
       agentIds,
       dateRange: { from, to },
       totalEvents: empEvents.length,
+      skippedFuture,
       totalWorkedHours: Math.round(totalWorked * 100) / 100,
       dailyBreakdown,
     });
