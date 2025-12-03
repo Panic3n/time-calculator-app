@@ -17,13 +17,19 @@ const supabaseServer = createClient(
 export async function GET(req: NextRequest) {
   try {
     // Verify this is a Vercel cron request using the standard header
-    // Vercel sends 'x-vercel-cron-signature' or we can check CRON_SECRET
     const authHeader = req.headers.get("authorization");
     const cronSecret = process.env.CRON_SECRET;
     
+    // Debug logging
+    console.log("Cron request received:", {
+      hasAuthHeader: !!authHeader,
+      hasCronSecret: !!cronSecret,
+      authHeaderPrefix: authHeader?.substring(0, 20),
+    });
+    
     // Allow if: no CRON_SECRET is set (dev mode), or auth header matches
     if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
-      console.warn("Unauthorized cron request");
+      console.warn("Unauthorized cron request - header mismatch");
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
