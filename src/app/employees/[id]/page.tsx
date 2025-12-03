@@ -29,6 +29,8 @@ type MonthEntry = {
   worked: number;
   logged: number;
   billed: number;
+  break_hours?: number;
+  absence_hours?: number;
 };
 
 
@@ -209,7 +211,7 @@ export default function EmployeeDetailPage() {
       if (!employeeId || !yearId) return;
       const { data, error } = await supabaseBrowser
         .from("month_entries")
-        .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed")
+        .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours")
         .eq("employee_id", employeeId)
         .eq("fiscal_year_id", yearId);
       if (error) {
@@ -503,14 +505,39 @@ export default function EmployeeDetailPage() {
                 worked: 0,
                 logged: 0,
                 billed: 0,
+                break_hours: 0,
+                absence_hours: 0,
               };
+              const availHours = monthlyHours[m.index] ?? 160;
+              const workedPct = availHours ? Math.round((e.worked / availHours) * 1000) / 10 : 0;
+              const breakPct = availHours ? Math.round(((e.break_hours || 0) / availHours) * 1000) / 10 : 0;
+              const absencePct = availHours ? Math.round(((e.absence_hours || 0) / availHours) * 1000) / 10 : 0;
               const loggedPct = e.worked ? Math.round((e.logged / e.worked) * 1000) / 10 : 0;
               const billedPct = e.worked ? Math.round((e.billed / e.worked) * 1000) / 10 : 0;
               return (
                 <div key={m.index} className="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
                   <div className="flex items-center justify-between">
                     <p className="font-medium text-black">{m.label}</p>
-                    <p className="text-xs text-slate-500">{loggedPct}% logged • {billedPct}% billed</p>
+                    <p className="text-xs text-slate-500">Avail: {availHours}h</p>
+                  </div>
+                  {/* Monthly metrics summary */}
+                  <div className="grid grid-cols-4 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
+                    <div className="text-center">
+                      <p className="font-medium">{e.worked.toFixed(1)}h</p>
+                      <p className="text-slate-400">Worked ({workedPct}%)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium">{(e.break_hours || 0).toFixed(1)}h</p>
+                      <p className="text-slate-400">Breaks ({breakPct}%)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium">{(e.absence_hours || 0).toFixed(1)}h</p>
+                      <p className="text-slate-400">Absence ({absencePct}%)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium">{billedPct}%</p>
+                      <p className="text-slate-400">Billed</p>
+                    </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-end">
                     <div>

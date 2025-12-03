@@ -25,6 +25,8 @@ type MonthEntry = {
   worked: number;
   logged: number;
   billed: number;
+  break_hours?: number;
+  absence_hours?: number;
 };
 
 type FiscalYear = { id: string; label: string; start_date: string; end_date: string; available_hours?: number };
@@ -155,7 +157,7 @@ export default function DashboardPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("month_entries")
-          .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed")
+          .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours")
           .eq("employee_id", employee.id)
           .eq("fiscal_year_id", yearId);
 
@@ -171,6 +173,8 @@ export default function DashboardPage() {
             worked: 0,
             logged: 0,
             billed: 0,
+            break_hours: 0,
+            absence_hours: 0,
           }
         );
         setEntries(full);
@@ -410,8 +414,13 @@ export default function DashboardPage() {
                 worked: 0,
                 logged: 0,
                 billed: 0,
+                break_hours: 0,
+                absence_hours: 0,
               };
-              const loggedPct = e.worked ? Math.round((e.logged / e.worked) * 1000) / 10 : 0;
+              const availHours = monthlyHours[m.index] ?? 160;
+              const workedPct = availHours ? Math.round((e.worked / availHours) * 1000) / 10 : 0;
+              const breakPct = availHours ? Math.round(((e.break_hours || 0) / availHours) * 1000) / 10 : 0;
+              const absencePct = availHours ? Math.round(((e.absence_hours || 0) / availHours) * 1000) / 10 : 0;
               const billedPct = e.worked ? Math.round((e.billed / e.worked) * 1000) / 10 : 0;
               return (
                 <div key={m.index} className="group relative">
@@ -419,20 +428,27 @@ export default function DashboardPage() {
                   <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30">
                     <div className="flex items-center justify-between">
                       <p className="font-semibold text-[var(--color-text)]">{m.label}</p>
-                      <p className="text-xs text-[var(--color-text)]/60 font-medium">{loggedPct}% logged • {billedPct}% billed</p>
+                      <p className="text-xs text-[var(--color-text)]/60 font-medium">Avail: {availHours}h</p>
                     </div>
-                    <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div className="grid grid-cols-4 gap-2 text-sm">
                       <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Worked</p>
-                        <p className="font-semibold text-[var(--color-text)]">{(e.worked || 0).toFixed(1)} h</p>
+                        <p className="font-semibold text-[var(--color-text)]">{(e.worked || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-[var(--color-text)]/50">{workedPct}%</p>
                       </div>
                       <div>
-                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Logged</p>
-                        <p className="font-semibold text-[var(--color-text)]">{decimalToHM(e.logged || 0)}</p>
+                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Breaks</p>
+                        <p className="font-semibold text-[var(--color-text)]">{(e.break_hours || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-[var(--color-text)]/50">{breakPct}%</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Absence</p>
+                        <p className="font-semibold text-[var(--color-text)]">{(e.absence_hours || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-[var(--color-text)]/50">{absencePct}%</p>
                       </div>
                       <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Billed</p>
-                        <p className="font-semibold text-[var(--color-text)]">{decimalToHM(e.billed || 0)}</p>
+                        <p className="font-semibold text-[var(--color-text)]">{billedPct}%</p>
                       </div>
                     </div>
                   </div>

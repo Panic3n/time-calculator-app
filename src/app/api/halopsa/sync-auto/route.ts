@@ -327,7 +327,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     } catch {}
 
     // Aggregate per agent + fiscal month
-    type Totals = { logged: number; billed: number; worked: number };
+    type Totals = { logged: number; billed: number; worked: number; breakHours: number; absenceHours: number };
     const agg: Record<string, Totals> = {};
     const dailyAgg: Record<string, { start: number; end: number; breaks: number; empId: string; agentId: string; dateOnly: string; monthIdx: number }> = {};
 
@@ -384,12 +384,24 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         || (!!breakType && (excludedBreakTypes ?? defaultBreaks).has(breakType));
       const holidayIdNum = Number(holidayId);
       const isExcludedByHolidayId = Number.isFinite(holidayIdNum) && holidayIdNum > 0;
+      
+      // Determine if this is an absence entry (holiday/vacation)
+      const isAbsence = isExcludedByHolidayId || ct === "holiday" || ct === "vacation" || ct === "sick leave";
+      
       const excluded = isExcludedByCharge || isExcludedByBreak || isExcludedByHolidayId;
       const loggedAdd = raw > 0 && !excluded ? raw : 0;
 
-      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0 });
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
+      
+      // Track break hours and absence hours
+      if (isExcludedByBreak && raw > 0) {
+        cur.breakHours += raw;
+      }
+      if (isAbsence && raw > 0) {
+        cur.absenceHours += raw;
+      }
 
       // Daily aggregation for Worked Hours (fallback if no Timesheet data)
       // Store agentId so we can look up Timesheet data later
@@ -431,7 +443,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       
       if (workedHours > 0) {
         const key = `${d.empId}:${d.monthIdx}`;
-        const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0 });
+        const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0 });
         cur.worked += workedHours;
       }
     }
@@ -462,6 +474,8 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         logged: Math.round(totals.logged * 100) / 100,
         billed: Math.round(totals.billed * 100) / 100,
         worked: Math.round(totals.worked * 100) / 100,
+        break_hours: Math.round(totals.breakHours * 100) / 100,
+        absence_hours: Math.round(totals.absenceHours * 100) / 100,
       };
     });
 
