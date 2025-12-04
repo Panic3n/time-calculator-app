@@ -32,6 +32,7 @@ type MonthEntry = {
   break_hours?: number;
   absence_hours?: number;
   unlogged_hours?: number;
+  overtime_hours?: number;
 };
 
 
@@ -130,9 +131,10 @@ export default function EmployeeDetailPage() {
         acc.breakHours += e.break_hours || 0;
         acc.absenceHours += e.absence_hours || 0;
         acc.unloggedHours += e.unlogged_hours || 0;
+        acc.overtimeHours += e.overtime_hours || 0;
         return acc;
       },
-      { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 }
+      { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0, overtimeHours: 0 }
     );
     const pct = {
       loggedPct: sum.worked ? Math.round((sum.logged / sum.worked) * 1000) / 10 : 0,
@@ -215,7 +217,7 @@ export default function EmployeeDetailPage() {
       if (!employeeId || !yearId) return;
       const { data, error } = await supabaseBrowser
         .from("month_entries")
-        .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours, unlogged_hours")
+        .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours, unlogged_hours, overtime_hours")
         .eq("employee_id", employeeId)
         .eq("fiscal_year_id", yearId);
       if (error) {
@@ -445,6 +447,10 @@ export default function EmployeeDetailPage() {
               <p className="text-lg font-semibold">{totals.absenceHours.toFixed(1)} h</p>
             </div>
             <div>
+              <p className="text-slate-500">Overtime</p>
+              <p className="text-lg font-semibold text-orange-400">{totals.overtimeHours.toFixed(1)} h</p>
+            </div>
+            <div>
               <p className="text-slate-500">Unlogged</p>
               <p className="text-lg font-semibold">{totals.unloggedHours.toFixed(1)} h ({totals.worked > 0 ? Math.round((totals.unloggedHours / totals.worked) * 1000) / 10 : 0}%)</p>
             </div>
@@ -523,6 +529,7 @@ export default function EmployeeDetailPage() {
                 billed: 0,
                 break_hours: 0,
                 absence_hours: 0,
+                overtime_hours: 0,
               };
               const availHours = monthlyHours[m.index] ?? 160;
               const workedPct = availHours ? Math.round((e.worked / availHours) * 1000) / 10 : 0;
@@ -530,6 +537,7 @@ export default function EmployeeDetailPage() {
               const absencePct = availHours ? Math.round(((e.absence_hours || 0) / availHours) * 1000) / 10 : 0;
               const loggedPct = e.worked ? Math.round((e.logged / e.worked) * 1000) / 10 : 0;
               const billedPct = e.worked ? Math.round((e.billed / e.worked) * 1000) / 10 : 0;
+              const overtimeHours = e.overtime_hours || 0;
               return (
                 <div key={m.index} className="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
                   <div className="flex items-center justify-between">
@@ -537,7 +545,7 @@ export default function EmployeeDetailPage() {
                     <p className="text-xs text-slate-500">Avail: {availHours}h</p>
                   </div>
                   {/* Monthly metrics summary */}
-                  <div className="grid grid-cols-4 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
+                  <div className="grid grid-cols-5 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
                     <div className="text-center">
                       <p className="font-medium">{e.worked.toFixed(1)}h</p>
                       <p className="text-slate-400">Worked ({workedPct}%)</p>
@@ -549,6 +557,10 @@ export default function EmployeeDetailPage() {
                     <div className="text-center">
                       <p className="font-medium">{(e.absence_hours || 0).toFixed(1)}h</p>
                       <p className="text-slate-400">Absence ({absencePct}%)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium text-orange-500">{overtimeHours.toFixed(1)}h</p>
+                      <p className="text-slate-400">Overtime</p>
                     </div>
                     <div className="text-center">
                       <p className="font-medium">{billedPct}%</p>

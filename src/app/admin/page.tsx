@@ -30,7 +30,7 @@ export default function AdminPage() {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [years, setYears] = useState<FiscalYear[]>([]);
   const [yearId, setYearId] = useState<string>("");
-  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board" | "halo-sync" | "entries" | "badges">("employees");
+  const [section, setSection] = useState<"employees" | "fiscal" | "team" | "charge" | "budgets" | "goals" | "calculations" | "message-board" | "halo-sync" | "entries" | "badges" | "special-days" | "shifts">("employees");
 
   // Employees: create/edit/delete
   const [newEmployee, setNewEmployee] = useState<{ name: string; role: string }>({ name: "", role: "" });
@@ -102,6 +102,18 @@ export default function AdminPage() {
   const [badgeAssignments, setBadgeAssignments] = useState<Record<string, Record<string, boolean>>>({}); // employeeId -> badgeId -> bool
   const [busyBadge, setBusyBadge] = useState(false);
 
+  // Special Work Days State
+  type SpecialDay = { id: string; date: string; work_hours: number; lunch_minutes: number; description: string | null };
+  const [specialDays, setSpecialDays] = useState<SpecialDay[]>([]);
+  const [newSpecialDay, setNewSpecialDay] = useState({ date: "", work_hours: "0", lunch_minutes: "30", description: "" });
+  const [busySpecialDay, setBusySpecialDay] = useState(false);
+
+  // Shifts State
+  type Shift = { id: string; name: string; start_time: string; end_time: string; work_hours: number; lunch_minutes: number };
+  const [shifts, setShifts] = useState<Shift[]>([]);
+  const [employeeShiftMap, setEmployeeShiftMap] = useState<Record<string, string>>({});
+  const [busyShift, setBusyShift] = useState(false);
+
   // Load badges when section is active
   useEffect(() => {
     const loadBadgesData = async () => {
@@ -125,6 +137,100 @@ export default function AdminPage() {
     };
     loadBadgesData();
   }, [section]);
+
+  // Load special days when section is active
+  useEffect(() => {
+    const loadSpecialDays = async () => {
+      if (section !== "special-days") return;
+      try {
+        const res = await fetch("/api/admin/special-days");
+        const data = await res.json();
+        if (data.ok) {
+          setSpecialDays(data.days || []);
+        }
+      } catch (e) {
+        console.error("Failed to load special days", e);
+      }
+    };
+    loadSpecialDays();
+  }, [section]);
+
+  // Load shifts when section is active
+  useEffect(() => {
+    const loadShifts = async () => {
+      if (section !== "shifts") return;
+      try {
+        const res = await fetch("/api/admin/shifts");
+        const data = await res.json();
+        if (data.ok) {
+          setShifts(data.shifts || []);
+          setEmployeeShiftMap(data.employeeShiftMap || {});
+        }
+      } catch (e) {
+        console.error("Failed to load shifts", e);
+      }
+    };
+    loadShifts();
+  }, [section]);
+
+  const createSpecialDay = async () => {
+    if (!newSpecialDay.date) {
+      alert("Please select a date");
+      return;
+    }
+    setBusySpecialDay(true);
+    try {
+      const res = await fetch("/api/admin/special-days", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: newSpecialDay.date,
+          work_hours: Number(newSpecialDay.work_hours) || 0,
+          lunch_minutes: Number(newSpecialDay.lunch_minutes) || 30,
+          description: newSpecialDay.description || null,
+        }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setNewSpecialDay({ date: "", work_hours: "0", lunch_minutes: "30", description: "" });
+      // Reload
+      const res2 = await fetch("/api/admin/special-days");
+      const data2 = await res2.json();
+      if (data2.ok) setSpecialDays(data2.days || []);
+    } catch (e: any) {
+      alert(e.message || "Failed to save special day");
+    } finally {
+      setBusySpecialDay(false);
+    }
+  };
+
+  const deleteSpecialDay = async (id: string) => {
+    if (!confirm("Delete this special day?")) return;
+    try {
+      await fetch(`/api/admin/special-days?id=${id}`, { method: "DELETE" });
+      setSpecialDays(prev => prev.filter(d => d.id !== id));
+    } catch (e) {
+      alert("Failed to delete special day");
+    }
+  };
+
+  const assignShift = async (employeeId: string, shiftId: string) => {
+    setBusyShift(true);
+    try {
+      const res = await fetch("/api/admin/shifts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ employee_id: employeeId, shift_id: shiftId }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error);
+      setEmployeeShiftMap(prev => ({ ...prev, [employeeId]: shiftId }));
+    } catch (e: any) {
+      alert(e.message || "Failed to assign shift");
+    } finally {
+      setBusyShift(false);
+    }
+  };
 
   const createBadge = async () => {
     if (!newBadge.name || !newBadge.description || !newBadge.image_url || !newBadge.category) {
@@ -865,6 +971,20 @@ export default function AdminPage() {
               className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "badges" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
             >
               Badges
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("special-days")}
+              className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "special-days" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
+            >
+              Special Work Days
+            </button>
+            <button
+              type="button"
+              onClick={() => setSection("shifts")}
+              className={`text-left px-3 py-2 rounded-lg font-medium transition-all ${section === "shifts" ? "bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/30 shadow-md" : "text-[var(--color-text)]/70 hover:text-[var(--color-text)] hover:bg-[var(--color-surface)]/50"}`}
+            >
+              Shifts
             </button>
           </nav>
         </aside>
@@ -1989,6 +2109,236 @@ export default function AdminPage() {
                         ))}
                       </tbody>
                     </table>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+          {section === "special-days" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Special Work Days</CardTitle>
+                  <CardDescription>
+                    Define days with custom work hours (red days, days before holidays, etc.). 
+                    Days not listed here default to 8 hours.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Add new special day */}
+                  <div className="p-4 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)]/30">
+                    <h4 className="font-medium mb-3">Add Special Day</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-3 items-end">
+                      <div>
+                        <label className="text-sm block mb-1">Date</label>
+                        <Input
+                          type="date"
+                          value={newSpecialDay.date}
+                          onChange={(e) => setNewSpecialDay(s => ({ ...s, date: e.target.value }))}
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm block mb-1">Work Hours</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="8"
+                          step="0.5"
+                          value={newSpecialDay.work_hours}
+                          onChange={(e) => setNewSpecialDay(s => ({ ...s, work_hours: e.target.value }))}
+                          placeholder="0 for holiday"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm block mb-1">Lunch (min)</label>
+                        <Input
+                          type="number"
+                          min="0"
+                          max="60"
+                          step="5"
+                          value={newSpecialDay.lunch_minutes}
+                          onChange={(e) => setNewSpecialDay(s => ({ ...s, lunch_minutes: e.target.value }))}
+                          placeholder="30"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-sm block mb-1">Description</label>
+                        <Input
+                          value={newSpecialDay.description}
+                          onChange={(e) => setNewSpecialDay(s => ({ ...s, description: e.target.value }))}
+                          placeholder="e.g. Christmas Eve, Midsummer Eve"
+                        />
+                      </div>
+                      <Button onClick={createSpecialDay} disabled={busySpecialDay}>
+                        {busySpecialDay ? "Saving..." : "Add Day"}
+                      </Button>
+                    </div>
+                  </div>
+
+                  {/* List of special days */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--color-border)]">
+                          <th className="text-left py-2 px-2 font-medium">Date</th>
+                          <th className="text-left py-2 px-2 font-medium">Day</th>
+                          <th className="text-center py-2 px-2 font-medium">Work Hours</th>
+                          <th className="text-center py-2 px-2 font-medium">Lunch</th>
+                          <th className="text-left py-2 px-2 font-medium">Description</th>
+                          <th className="text-right py-2 px-2 font-medium">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {specialDays.length === 0 ? (
+                          <tr>
+                            <td colSpan={6} className="py-8 text-center text-[var(--color-text)]/50">
+                              No special days defined. All days default to 8 hours with 60min lunch.
+                            </td>
+                          </tr>
+                        ) : (
+                          specialDays.map((day) => {
+                            const d = new Date(day.date + "T12:00:00");
+                            const dayName = d.toLocaleDateString("en-US", { weekday: "long" });
+                            const dateFormatted = d.toLocaleDateString("sv-SE");
+                            return (
+                              <tr key={day.id} className="border-b border-[var(--color-border)]/50 hover:bg-[var(--color-surface)]/30">
+                                <td className="py-2 px-2">{dateFormatted}</td>
+                                <td className="py-2 px-2 text-[var(--color-text)]/70">{dayName}</td>
+                                <td className="py-2 px-2 text-center">
+                                  <span className={`inline-block px-2 py-0.5 rounded text-xs font-medium ${
+                                    day.work_hours === 0 
+                                      ? "bg-red-500/20 text-red-400" 
+                                      : day.work_hours < 8 
+                                        ? "bg-yellow-500/20 text-yellow-400"
+                                        : "bg-green-500/20 text-green-400"
+                                  }`}>
+                                    {day.work_hours}h
+                                  </span>
+                                </td>
+                                <td className="py-2 px-2 text-center text-[var(--color-text)]/70">
+                                  {day.lunch_minutes}min
+                                </td>
+                                <td className="py-2 px-2">{day.description || "-"}</td>
+                                <td className="py-2 px-2 text-right">
+                                  <Button
+                                    variant="destructive"
+                                    className="h-7 px-2 text-xs"
+                                    onClick={() => deleteSpecialDay(day.id)}
+                                  >
+                                    Delete
+                                  </Button>
+                                </td>
+                              </tr>
+                            );
+                          })
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Info box */}
+                  <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm">
+                    <strong>How it works:</strong>
+                    <ul className="mt-2 space-y-1 list-disc list-inside text-[var(--color-text)]/80">
+                      <li><strong>0 hours</strong> = Full holiday (red day)</li>
+                      <li><strong>4-6 hours</strong> = Shortened day (day before holiday)</li>
+                      <li><strong>8 hours</strong> = Normal day (default for unlisted days)</li>
+                      <li><strong>Lunch:</strong> Normal days = 60min, Special days = 30min (configurable)</li>
+                      <li>Lunch breaks are tracked but NOT subtracted from worked hours (Halo already does this)</li>
+                      <li>Other breaks (coffee, etc.) are tracked for reporting</li>
+                    </ul>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          )}
+
+          {section === "shifts" && (
+            <div className="space-y-6">
+              <Card>
+                <CardHeader>
+                  <CardTitle>Employee Shifts</CardTitle>
+                  <CardDescription>
+                    Assign work shifts to employees. Worked hours are calculated as the shift&apos;s work hours (default 8h) 
+                    for each day the employee has logged time, minus any absences.
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  {/* Available shifts info */}
+                  <div className="p-4 border border-[var(--color-border)] rounded-lg bg-[var(--color-surface)]/30">
+                    <h4 className="font-medium mb-3">Available Shifts</h4>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {shifts.map((shift) => (
+                        <div key={shift.id} className="p-3 bg-[var(--color-surface)]/50 rounded border border-[var(--color-border)]/50">
+                          <div className="font-medium">{shift.name}</div>
+                          <div className="text-sm text-[var(--color-text)]/70">
+                            {shift.start_time?.slice(0, 5)} - {shift.end_time?.slice(0, 5)}
+                          </div>
+                          <div className="text-xs text-[var(--color-text)]/50 mt-1">
+                            {shift.work_hours}h work, {shift.lunch_minutes}min lunch
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Employee shift assignments */}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-[var(--color-border)]">
+                          <th className="text-left py-2 px-2 font-medium">Employee</th>
+                          <th className="text-left py-2 px-2 font-medium">Assigned Shift</th>
+                          <th className="text-left py-2 px-2 font-medium">Change Shift</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {employees.map((emp) => {
+                          const currentShiftId = employeeShiftMap[emp.id];
+                          const currentShift = shifts.find(s => s.id === currentShiftId);
+                          return (
+                            <tr key={emp.id} className="border-b border-[var(--color-border)]/50 hover:bg-[var(--color-surface)]/30">
+                              <td className="py-2 px-2 font-medium">{emp.name}</td>
+                              <td className="py-2 px-2">
+                                {currentShift ? (
+                                  <span className="inline-block px-2 py-0.5 rounded text-xs font-medium bg-green-500/20 text-green-400">
+                                    {currentShift.name}
+                                  </span>
+                                ) : (
+                                  <span className="text-[var(--color-text)]/50">Not assigned</span>
+                                )}
+                              </td>
+                              <td className="py-2 px-2">
+                                <select
+                                  className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded px-2 py-1 text-sm"
+                                  value={currentShiftId || ""}
+                                  onChange={(e) => assignShift(emp.id, e.target.value)}
+                                  disabled={busyShift}
+                                >
+                                  <option value="">Select shift...</option>
+                                  {shifts.map((shift) => (
+                                    <option key={shift.id} value={shift.id}>
+                                      {shift.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {/* Info box */}
+                  <div className="p-4 bg-blue-500/10 border border-blue-500/30 rounded-lg text-sm">
+                    <strong>How worked hours are calculated:</strong>
+                    <ul className="mt-2 space-y-1 list-disc list-inside text-[var(--color-text)]/80">
+                      <li>Each day an employee logs time, they get their shift&apos;s work hours (default 8h)</li>
+                      <li>Special work days override the shift hours (e.g., 4h on Christmas Eve)</li>
+                      <li>Absence hours are subtracted from the daily work hours</li>
+                      <li>Today is excluded until the day is complete</li>
+                    </ul>
                   </div>
                 </CardContent>
               </Card>

@@ -315,6 +315,8 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     // Holiday entries with agent_id > 0 are agent-specific absences (sickness, vacation, etc.)
     // Holiday entries with agent_id = 0 are company-wide holidays (public holidays)
     const absenceMap: Record<string, number> = {};
+    // Also track daily absences to subtract from worked hours (empId:dateOnly -> hours)
+    const dailyAbsenceMap: Record<string, number> = {};
     const todayForAbsence = new Date().toISOString().slice(0, 10);
     let agentHolidayCount = 0;
     
@@ -341,14 +343,25 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       if (startDateOnly > todayForAbsence) continue;
       
       // Calculate hours for this absence
-      // Priority: use duration field if available, otherwise calculate from dates
+      // Work day = 8 hours (9h scheduled minus 1h lunch break)
+      // Halo's duration field often includes the full 9h schedule, so we need to adjust
+      const WORK_HOURS_PER_DAY = 8;
       let absenceHours = 0;
       
       if (duration > 0) {
-        // Use the duration field from Halo (already in hours)
-        absenceHours = duration;
+        // Halo's duration is in hours but includes lunch breaks
+        // For multi-day absences, calculate days and multiply by 8
+        // For single-day, cap at 8 hours
+        if (duration > 9) {
+          // Multi-day absence: duration / 9 gives approximate days (Halo uses 9h/day)
+          const approxDays = Math.round(duration / 9);
+          absenceHours = approxDays * WORK_HOURS_PER_DAY;
+        } else {
+          // Single day or partial day - cap at 8 hours
+          absenceHours = Math.min(duration, WORK_HOURS_PER_DAY);
+        }
       } else if (isAllDay) {
-        // All-day absence = 8 hours per day
+        // All-day absence = 8 hours per day (excluding lunch)
         if (endDate && endDate !== startDate) {
           // Multi-day absence
           const s = new Date(startDateOnly).getTime();
@@ -356,27 +369,33 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
           const e = new Date(eDate).getTime();
           if (!isNaN(s) && !isNaN(e) && e >= s) {
             const days = Math.round((e - s) / (1000 * 60 * 60 * 24)) + 1;
-            absenceHours = days * 8;
+            absenceHours = days * WORK_HOURS_PER_DAY;
           } else {
-            absenceHours = 8;
+            absenceHours = WORK_HOURS_PER_DAY;
           }
         } else {
-          absenceHours = 8;
+          absenceHours = WORK_HOURS_PER_DAY;
         }
       } else if (startDate && endDate) {
-        // Calculate duration from start to end time
+        // Calculate duration from start to end time, cap at 8h per day
         const s = new Date(startDate).getTime();
         const e = new Date(endDate).getTime();
         if (!isNaN(s) && !isNaN(e) && e > s) {
-          absenceHours = (e - s) / (1000 * 60 * 60); // Convert ms to hours
+          const rawHours = (e - s) / (1000 * 60 * 60);
+          absenceHours = Math.min(rawHours, WORK_HOURS_PER_DAY);
         }
       }
       
       if (absenceHours > 0) {
         agentHolidayCount++;
         const monthIdx = fiscalMonthIndex(startDateOnly);
-        const key = `${empId}:${monthIdx}`;
-        absenceMap[key] = (absenceMap[key] || 0) + absenceHours;
+        const monthKey = `${empId}:${monthIdx}`;
+        absenceMap[monthKey] = (absenceMap[monthKey] || 0) + absenceHours;
+        
+        // Also track daily absence for subtracting from worked hours
+        const dailyKey = `${empId}:${startDateOnly}`;
+        dailyAbsenceMap[dailyKey] = (dailyAbsenceMap[dailyKey] || 0) + absenceHours;
+        
         console.log(`Holiday absence: ${holidayName} for agent ${agentId} -> emp ${empId}, ${absenceHours}h on ${startDateOnly}`);
       }
     }
@@ -386,6 +405,10 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
     let billableTypeSet: Set<string> | null = null;
     let excludedLoggedSet: Set<string> | null = null;
     let excludedBreakTypes: Set<string> | null = null;
+    
+    // Load special work days (red days, days before holidays, etc.)
+    // Key: date string (YYYY-MM-DD) -> work hours for that day
+    const specialDaysMap: Record<string, number> = {};
 
     try {
       const { data: billableCfg } = await supabaseServer
@@ -412,21 +435,58 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
           breakCfg.map((r: any) => `${r.name ?? ""}`.trim().toLowerCase()).filter(Boolean)
         );
       }
+      
+      // Load special work days
+      const { data: specialDays } = await supabaseServer
+        .from("special_work_days")
+        .select("date, work_hours");
+      if (Array.isArray(specialDays)) {
+        for (const sd of specialDays) {
+          if (sd.date) {
+            specialDaysMap[sd.date] = Number(sd.work_hours) || 0;
+          }
+        }
+        console.log(`Loaded ${Object.keys(specialDaysMap).length} special work days`);
+      }
+    } catch {}
+
+    // Load employee shifts (employee_id -> work_hours)
+    // This determines how many hours each employee works per day (default 8)
+    const employeeShiftHours: Record<string, number> = {};
+    try {
+      const { data: shiftAssignments } = await supabaseServer
+        .from("employee_shifts")
+        .select("employee_id, shift_id, shifts(work_hours)");
+      if (Array.isArray(shiftAssignments)) {
+        for (const sa of shiftAssignments as any[]) {
+          const workHours = sa.shifts?.work_hours ?? 8;
+          employeeShiftHours[sa.employee_id] = Number(workHours);
+        }
+        console.log(`Loaded ${Object.keys(employeeShiftHours).length} employee shift assignments`);
+      }
     } catch {}
 
     // Aggregate per agent + fiscal month
-    type Totals = { logged: number; billed: number; worked: number; breakHours: number; absenceHours: number; unloggedHours: number };
+    type Totals = { logged: number; billed: number; worked: number; breakHours: number; absenceHours: number; unloggedHours: number; overtimeHours: number };
     const agg: Record<string, Totals> = {};
-    const dailyAgg: Record<string, { start: number; end: number; breaks: number; empId: string; agentId: string; dateOnly: string; monthIdx: number }> = {};
+    // Daily aggregation now also tracks total logged hours for overtime calculation
+    const dailyAgg: Record<string, { start: number; end: number; breaks: number; loggedHours: number; empId: string; agentId: string; dateOnly: string; monthIdx: number }> = {};
 
     const defaultBillableTypes = new Set([
       "remote support", "on-site support", "project", "documentation",
       "overtime remote support", "overtime on-site support", "overtime project",
       "int support (other department)", "travel time (zone 2)", "travel time (zone 1)",
       "overtime travel time", "included (agreement)", "finance deal", "travel only", "int pre-sale",
+      "sp-agreement", "sales account",
     ]);
     const defaultExcludedLogged = new Set(["holiday", "vacation", "break"]);
-    const defaultBreaks = new Set(["taking a breather", "lunch break", "non-working hours"]);
+    // Breaks that count as non-working time (excluded from logged hours)
+    // Note: "lunch break" is NOT counted as a break for tracking purposes
+    // because the 8h work day already excludes the 1h lunch
+    const defaultBreaks = new Set(["taking a breather", "lunch break", "non-working hours", "lunch"]);
+    // Lunch break types - these should NOT be subtracted from worked hours
+    // because the 8h shift already excludes the 1h lunch
+    const lunchBreakTypes = new Set(["lunch break", "lunch", "lunchbreak", "lunch-break"]);
 
     // Get today's date (UTC) to exclude future entries
     const todayUTC = new Date().toISOString().slice(0, 10);
@@ -447,8 +507,9 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       if (!dateVal) continue;
       const dateOnly = dateVal.length >= 10 ? dateVal.slice(0, 10) : dateVal;
       
-      // Skip future dates (entries scheduled for dates after today)
-      if (dateOnly > todayUTC) {
+      // Skip today and future dates - only count completed days
+      // This ensures logged, billed, worked, breaks are all consistent
+      if (dateOnly >= todayUTC) {
         skippedFuture++;
         continue;
       }
@@ -463,12 +524,10 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const billable = raw > 0 && isBillable ? raw : 0;
 
       const breakTypeRaw = pick<any>(ev, ["break_type", "breakType"]);
-      const breakType = `${breakTypeRaw ?? ""}`.trim().toLowerCase();
+      // Also check break_type_name for the actual name (Halo uses this)
+      const breakTypeName = pick<string>(ev, ["break_type_name", "breakTypeName", "breaktype_name"]) || "";
+      const breakType = breakTypeName ? breakTypeName.trim().toLowerCase() : `${breakTypeRaw ?? ""}`.trim().toLowerCase();
       const holidayId = pick<any>(ev, ["holiday_id", "holidayId"]);
-      
-      // Check for "all day" entries (vacation, sick, etc. logged as full day)
-      const isAllDay = pick<any>(ev, ["allday", "all_day", "isAllDay", "is_all_day"]);
-      const allDayHours = 8; // All-day entries count as 8 hours
 
       const isExcludedByCharge = (excludedLoggedSet ?? defaultExcludedLogged).has(ct);
       const breakTypeNum = Number(breakTypeRaw);
@@ -477,31 +536,27 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
       const holidayIdNum = Number(holidayId);
       const isExcludedByHolidayId = Number.isFinite(holidayIdNum) && holidayIdNum > 0;
       
-      // Absence = any entry with a holiday_id (vacation, sick, dentist, etc.)
-      const isAbsence = isExcludedByHolidayId;
-      
-      // Calculate absence hours: use raw time, or 8h if it's an all-day entry with 0 hours
-      const absenceHoursToAdd = isAbsence 
-        ? (raw > 0 ? raw : (isAllDay ? allDayHours : 0))
-        : 0;
+      // Note: Absence hours are tracked from the Holiday endpoint (absenceMap), not from TimesheetEvent
+      // This avoids double-counting since Holiday entries are the authoritative source for absences
       
       const excluded = isExcludedByCharge || isExcludedByBreak || isExcludedByHolidayId;
       const loggedAdd = raw > 0 && !excluded ? raw : 0;
 
-      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 });
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0, overtimeHours: 0 });
       cur.logged += Number.isFinite(loggedAdd) ? loggedAdd : 0;
       cur.billed += Number.isFinite(billable) ? billable : 0;
       
-      // Track break hours and absence hours
-      if (isExcludedByBreak && raw > 0) {
+      // Track break hours (absence hours come from Holiday endpoint, not here)
+      // Exclude lunch breaks from tracking - lunch is already accounted for in the 8h work day
+      // In Halo: break_type=1 is coffee/short break, break_type=2 is lunch
+      const isLunchBreak = breakTypeNum === 2 || lunchBreakTypes.has(breakType) || breakType.includes("lunch") || ct.includes("lunch");
+      
+      if (isExcludedByBreak && raw > 0 && !isLunchBreak) {
         cur.breakHours += raw;
       }
-      if (absenceHoursToAdd > 0) {
-        cur.absenceHours += absenceHoursToAdd;
-      }
 
-      // Daily aggregation for Worked Hours (fallback if no Timesheet data)
-      // Store agentId so we can look up Timesheet data later
+      // Daily aggregation for Worked Hours and Overtime calculation
+      // Track total logged hours per day to calculate overtime (hours > 8h)
       const startVal = pick<string>(ev, ["start_date", "startdate", "startDate"]);
       const endVal = pick<string>(ev, ["end_date", "enddate", "endDate"]);
       if (startVal && endVal) {
@@ -509,55 +564,78 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         const e = new Date(endVal).getTime();
         if (!isNaN(s) && !isNaN(e)) {
           const dayKey = `${empId}:${dateOnly}`;
-          const d = (dailyAgg[dayKey] ||= { start: Infinity, end: -Infinity, breaks: 0, empId, agentId, dateOnly, monthIdx: idx });
+          const d = (dailyAgg[dayKey] ||= { start: Infinity, end: -Infinity, breaks: 0, loggedHours: 0, empId, agentId, dateOnly, monthIdx: idx });
           if (s < d.start) d.start = s;
           if (e > d.end) d.end = e;
-          if (isExcludedByBreak) d.breaks += raw;
+          // Track breaks for subtraction from worked hours (exclude lunch - already in 8h)
+          // In Halo: break_type=1 is coffee/short break, break_type=2 is lunch
+          const isLunchBreakForDaily = breakTypeNum === 2 || lunchBreakTypes.has(breakType) || breakType.includes("lunch") || ct.includes("lunch");
+          if (isExcludedByBreak && raw > 0 && !isLunchBreakForDaily) {
+            d.breaks += raw;
+          }
+          // Track logged hours for overtime calculation (exclude breaks/holidays)
+          if (!excluded && raw > 0) {
+            d.loggedHours += raw;
+          }
         }
       }
     }
 
-    // Sum up daily worked hours
-    // Priority: Use Timesheet work_hours if available, otherwise fall back to TimesheetEvent calculation
+    // Sum up daily worked hours using SHIFT-BASED calculation
+    // If an employee logged any time on a day, they get their shift's work hours (default 8h)
+    // Special work days override the shift hours
+    // Absence hours are subtracted from the daily work hours
+    // IMPORTANT: Skip the current day - it's not complete yet
     for (const d of Object.values(dailyAgg)) {
-      // Check if we have Timesheet data for this agent+date
-      const tsKey = `${d.agentId}:${d.dateOnly}`;
-      const tsData = timesheetMap[tsKey];
-      
-      let workedHours = 0;
-      let unloggedHours = 0;
-      
-      if (tsData) {
-        // Use Timesheet data (pre-calculated by Halo)
-        if (tsData.workHours > 0) {
-          workedHours = tsData.workHours;
-        }
-        if (tsData.unloggedHours > 0) {
-          unloggedHours = tsData.unloggedHours;
-        }
-      } else if (d.start !== Infinity && d.end !== -Infinity) {
-        // Fall back to TimesheetEvent data (earliest/latest logged entry)
-        const spanMs = d.end - d.start;
-        if (spanMs >= 0) {
-          const spanHours = spanMs / (1000 * 60 * 60);
-          workedHours = Math.max(0, spanHours - d.breaks);
-        }
+      // Skip today - the day isn't complete
+      if (d.dateOnly === todayUTC) {
+        continue;
       }
       
+      // Get the employee's shift work hours (default 8h if not assigned)
+      const shiftHours = employeeShiftHours[d.empId] ?? 8;
+      
+      // Check if this is a special work day (red day, day before holiday, etc.)
+      // Special days override the shift hours
+      const specialDayHours = specialDaysMap[d.dateOnly];
+      const dailyWorkHours = specialDayHours !== undefined ? specialDayHours : shiftHours;
+      
+      // If it's a full holiday (0 hours), skip adding worked hours
+      if (dailyWorkHours <= 0) {
+        continue;
+      }
+      
+      // Subtract daily absence hours AND break hours from worked hours
+      // Worked = shift hours (8h) - breaks - absences
+      const dailyAbsenceKey = `${d.empId}:${d.dateOnly}`;
+      const dailyAbsence = dailyAbsenceMap[dailyAbsenceKey] || 0;
+      const workedHours = Math.max(0, dailyWorkHours - dailyAbsence - d.breaks);
+      
+      // Calculate overtime: if logged hours exceed the daily work hours, the excess is overtime
+      const overtimeHours = d.loggedHours > dailyWorkHours ? d.loggedHours - dailyWorkHours : 0;
+      
+      // Get unlogged hours from Timesheet if available
+      const tsKey = `${d.agentId}:${d.dateOnly}`;
+      const tsData = timesheetMap[tsKey];
+      const unloggedHours = tsData?.unloggedHours ?? 0;
+      
       const key = `${d.empId}:${d.monthIdx}`;
-      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 });
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0, overtimeHours: 0 });
       if (workedHours > 0) {
         cur.worked += workedHours;
       }
       if (unloggedHours > 0) {
         cur.unloggedHours += unloggedHours;
       }
+      if (overtimeHours > 0) {
+        cur.overtimeHours += overtimeHours;
+      }
     }
     
     // Merge absenceMap (from Appointments + HolidayRequest) into agg
     // This is critical - the absenceMap was being built but never added to the final aggregation!
     for (const [key, hours] of Object.entries(absenceMap)) {
-      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 });
+      const cur = (agg[key] ||= { logged: 0, billed: 0, worked: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0, overtimeHours: 0 });
       cur.absenceHours += hours;
     }
     console.log(`Merged ${Object.keys(absenceMap).length} absence entries into aggregation`);
@@ -591,6 +669,7 @@ async function runImport(fy: FY, agentMap: Record<string, string>): Promise<{ ok
         break_hours: Math.round(totals.breakHours * 100) / 100,
         absence_hours: Math.round(totals.absenceHours * 100) / 100,
         unlogged_hours: Math.round(totals.unloggedHours * 100) / 100,
+        overtime_hours: Math.round(totals.overtimeHours * 100) / 100,
       };
     });
 
