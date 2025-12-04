@@ -420,71 +420,146 @@ export default function EmployeeDetailPage() {
             </CardContent>
           </Card>
         )}
-        <Card>
-          <CardHeader>
-            <CardTitle>Yearly Summary</CardTitle>
-            <CardDescription>Total hours and percentages</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-4 md:grid-cols-8 gap-4 text-sm">
-            <div>
-              <p className="text-slate-500">Worked</p>
-              <p className="text-lg font-semibold">{totals.worked.toFixed(1)} h</p>
+        <div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Yearly Summary</h2>
+            <p className="text-sm text-slate-500 font-medium mt-1">Total hours and percentages for {years.find(y => y.id === yearId)?.label}</p>
+            <div className="h-1 w-12 bg-gradient-to-r from-blue-500 to-blue-300 rounded-full mt-2" />
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-4">
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-blue-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+                  <span className="text-sm">⏰</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Worked</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-slate-900">{totals.worked.toFixed(1)}h</div>
+                </div>
+              </div>
             </div>
-            <div>
-              <p className="text-slate-500">Logged</p>
-              <p className="text-lg font-semibold">{totals.logged.toFixed(1)} h ({totals.loggedPct}%)</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Billed</p>
-              <p className="text-lg font-semibold">{totals.billed.toFixed(1)} h ({totals.billedPct}%)</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Breaks</p>
-              <p className="text-lg font-semibold">{totals.breakHours.toFixed(1)} h</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Absence</p>
-              <p className="text-lg font-semibold">{totals.absenceHours.toFixed(1)} h</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Overtime</p>
-              <p className="text-lg font-semibold text-orange-400">{totals.overtimeHours.toFixed(1)} h</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Unlogged</p>
-              <p className="text-lg font-semibold">{totals.unloggedHours.toFixed(1)} h ({totals.worked > 0 ? Math.round((totals.unloggedHours / totals.worked) * 1000) / 10 : 0}%)</p>
-            </div>
-            <div>
-              <p className="text-slate-500">Attendance</p>
-              <p className="text-lg font-semibold">
-                {(() => {
-                  const fy = years.find(y => y.id === yearId);
-                  if (!fy) return "0%";
-                  
-                  let cutoffIndex = 12;
-                  const now = new Date();
-                  const start = new Date(fy.start_date); 
-                  const end = new Date(fy.end_date);
-                  
-                  if (now < start) cutoffIndex = 0;
-                  else if (now > end) cutoffIndex = 12;
-                  else cutoffIndex = ((now.getUTCMonth() + 12) - 8) % 12;
 
-                  let availSum = 0;
-                  let workedSum = 0;
-                  for (let i = 0; i < cutoffIndex; i++) {
-                    availSum += (monthlyHours[i] ?? 160);
-                    const e = entries.find(x => x.month_index === i);
-                    workedSum += (e?.worked || 0);
-                  }
-                  
-                  const pct = availSum > 0 ? Math.round((workedSum / availSum) * 1000) / 10 : 0;
-                  return `${pct}%`;
-                })()}
-              </p>
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-blue-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+                  <span className="text-sm">📝</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Logged</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-slate-900">{totals.loggedPct}%</div>
+                  <div className="text-xs text-slate-400 mt-1">{totals.logged.toFixed(1)}h</div>
+                </div>
+              </div>
             </div>
-          </CardContent>
-        </Card>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-blue-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+                  <span className="text-sm">💼</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Billed</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-slate-900">{totals.billedPct}%</div>
+                  <div className="text-xs text-slate-400 mt-1">{totals.billed.toFixed(1)}h</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-blue-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+                  <span className="text-sm">☕</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Breaks</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-slate-900">{totals.breakHours.toFixed(1)}h</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-blue-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+                  <span className="text-sm">🏖️</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Absence</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-slate-900">{totals.absenceHours.toFixed(1)}h</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-orange-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-orange-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-orange-100">
+                  <span className="text-sm">⏱️</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Overtime</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-orange-500">{totals.overtimeHours.toFixed(1)}h</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-blue-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+                  <span className="text-sm">❓</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Unlogged</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-slate-900">{totals.worked > 0 ? Math.round((totals.unloggedHours / totals.worked) * 1000) / 10 : 0}%</div>
+                  <div className="text-xs text-slate-400 mt-1">{totals.unloggedHours.toFixed(1)}h</div>
+                </div>
+              </div>
+            </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-4 space-y-2 group-hover:border-blue-300 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-blue-100">
+                  <span className="text-sm">📊</span>
+                </div>
+                <h3 className="text-xs font-semibold text-slate-500">Attendance</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-xl font-bold text-slate-900">
+                    {(() => {
+                      const fy = years.find(y => y.id === yearId);
+                      if (!fy) return "0%";
+                      
+                      let cutoffIndex = 12;
+                      const now = new Date();
+                      const start = new Date(fy.start_date); 
+                      const end = new Date(fy.end_date);
+                      
+                      if (now < start) cutoffIndex = 0;
+                      else if (now > end) cutoffIndex = 12;
+                      else cutoffIndex = ((now.getUTCMonth() + 12) - 8) % 12;
+
+                      let availSum = 0;
+                      let workedSum = 0;
+                      for (let i = 0; i < cutoffIndex; i++) {
+                        availSum += (monthlyHours[i] ?? 160);
+                        const e = entries.find(x => x.month_index === i);
+                        workedSum += (e?.worked || 0);
+                      }
+                      
+                      const pct = availSum > 0 ? Math.round((workedSum / availSum) * 1000) / 10 : 0;
+                      return `${pct}%`;
+                    })()}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         {editMode === 'year' && (
           <Card>
@@ -513,12 +588,13 @@ export default function EmployeeDetailPage() {
         )}
 
         {editMode === 'month' && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Monthly Editor</CardTitle>
-            <CardDescription>Enter worked, logged, and billed for each month</CardDescription>
-          </CardHeader>
-          <CardContent className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div>
+          <div className="mb-6">
+            <h2 className="text-2xl font-bold text-slate-900 tracking-tight">Monthly Breakdown</h2>
+            <p className="text-sm text-slate-500 font-medium mt-1">Enter worked, logged, and billed for each month</p>
+            <div className="h-1 w-12 bg-gradient-to-r from-blue-500 to-blue-300 rounded-full mt-2" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {months.map((m) => {
               const e = entries.find((x) => x.month_index === m.index) ?? {
                 employee_id: employeeId,
@@ -540,45 +616,50 @@ export default function EmployeeDetailPage() {
               const unloggedPct = e.worked ? Math.round((unloggedHours / e.worked) * 1000) / 10 : 0;
               const overtimeHours = e.overtime_hours || 0;
               return (
-                <div key={m.index} className="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <p className="font-medium text-black">{m.label}</p>
-                    <p className="text-xs text-slate-500">Avail: {availHours}h</p>
-                  </div>
-                  {/* Monthly metrics summary - main row */}
-                  <div className="grid grid-cols-3 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
-                    <div className="text-center">
-                      <p className="font-medium">{e.worked.toFixed(1)}h</p>
-                      <p className="text-slate-400">Worked ({workedPct}%)</p>
+                <div key={m.index} className="group relative">
+                  <div className="absolute inset-0 bg-gradient-to-r from-blue-500/10 to-blue-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                  <div className="relative backdrop-blur-sm bg-white border border-slate-200 shadow-lg hover:shadow-xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-blue-300">
+                    <div className="flex items-center justify-between">
+                      <p className="font-semibold text-slate-900">{m.label}</p>
+                      <p className="text-xs text-slate-500 font-medium">Avail: {availHours}h</p>
                     </div>
-                    <div className="text-center">
-                      <p className="font-medium">{(e.logged || 0).toFixed(1)}h</p>
-                      <p className="text-slate-400">Logged ({loggedPct}%)</p>
+                    {/* Main metrics row */}
+                    <div className="grid grid-cols-3 gap-2 text-sm">
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">Worked</p>
+                        <p className="font-semibold text-slate-900">{(e.worked || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-slate-400">{workedPct}%</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">Logged</p>
+                        <p className="font-semibold text-slate-900">{(e.logged || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-slate-400">{loggedPct}%</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">Billed</p>
+                        <p className="font-semibold text-slate-900">{(e.billed || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-slate-400">{billedPct}%</p>
+                      </div>
                     </div>
-                    <div className="text-center">
-                      <p className="font-medium">{(e.billed || 0).toFixed(1)}h</p>
-                      <p className="text-slate-400">Billed ({billedPct}%)</p>
+                    {/* Secondary metrics row */}
+                    <div className="grid grid-cols-4 gap-2 text-sm pt-2 border-t border-slate-100">
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">Breaks</p>
+                        <p className="font-semibold text-slate-900">{(e.break_hours || 0).toFixed(1)}h</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">Absence</p>
+                        <p className="font-semibold text-slate-900">{(e.absence_hours || 0).toFixed(1)}h</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">Overtime</p>
+                        <p className="font-semibold text-orange-500">{overtimeHours.toFixed(1)}h</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500 text-xs font-medium">Unlogged</p>
+                        <p className="font-semibold text-slate-900">{unloggedHours.toFixed(1)}h</p>
+                      </div>
                     </div>
-                  </div>
-                  {/* Secondary metrics row */}
-                  <div className="grid grid-cols-4 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
-                    <div className="text-center">
-                      <p className="font-medium">{(e.break_hours || 0).toFixed(1)}h</p>
-                      <p className="text-slate-400">Breaks</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-medium">{(e.absence_hours || 0).toFixed(1)}h</p>
-                      <p className="text-slate-400">Absence</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-medium text-orange-500">{overtimeHours.toFixed(1)}h</p>
-                      <p className="text-slate-400">Overtime</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="font-medium">{unloggedHours.toFixed(1)}h</p>
-                      <p className="text-slate-400">Unlogged ({unloggedPct}%)</p>
-                    </div>
-                  </div>
                   <div className="grid grid-cols-3 gap-2 items-end">
                     <div>
                       <Label htmlFor={`w-${m.index}`}>Worked</Label>
@@ -675,11 +756,12 @@ export default function EmployeeDetailPage() {
                       />
                     </div>
                   </div>
+                  </div>
                 </div>
               );
             })}
-          </CardContent>
-        </Card>
+          </div>
+        </div>
         )}
 
         <Card>
