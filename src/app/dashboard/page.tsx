@@ -477,8 +477,7 @@ export default function DashboardPage() {
               };
               const availHours = monthlyHours[m.index] ?? 160;
               const workedPct = availHours ? Math.round((e.worked / availHours) * 1000) / 10 : 0;
-              const breakPct = availHours ? Math.round(((e.break_hours || 0) / availHours) * 1000) / 10 : 0;
-              const absencePct = availHours ? Math.round(((e.absence_hours || 0) / availHours) * 1000) / 10 : 0;
+              const loggedPct = e.worked ? Math.round((e.logged / e.worked) * 1000) / 10 : 0;
               const billedPct = e.worked ? Math.round((e.billed / e.worked) * 1000) / 10 : 0;
               const overtimeHours = e.overtime_hours || 0;
               return (
@@ -489,29 +488,39 @@ export default function DashboardPage() {
                       <p className="font-semibold text-[var(--color-text)]">{m.label}</p>
                       <p className="text-xs text-[var(--color-text)]/60 font-medium">Avail: {availHours}h</p>
                     </div>
-                    <div className="grid grid-cols-5 gap-2 text-sm">
+                    <div className="grid grid-cols-3 gap-2 text-sm">
                       <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Worked</p>
                         <p className="font-semibold text-[var(--color-text)]">{(e.worked || 0).toFixed(1)}h</p>
                         <p className="text-xs text-[var(--color-text)]/50">{workedPct}%</p>
                       </div>
                       <div>
+                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Logged</p>
+                        <p className="font-semibold text-[var(--color-text)]">{(e.logged || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-[var(--color-text)]/50">{loggedPct}%</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Billed</p>
+                        <p className="font-semibold text-[var(--color-text)]">{(e.billed || 0).toFixed(1)}h</p>
+                        <p className="text-xs text-[var(--color-text)]/50">{billedPct}%</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-sm pt-2 border-t border-[var(--color-surface)]/40">
+                      <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Breaks</p>
                         <p className="font-semibold text-[var(--color-text)]">{(e.break_hours || 0).toFixed(1)}h</p>
-                        <p className="text-xs text-[var(--color-text)]/50">{breakPct}%</p>
                       </div>
                       <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Absence</p>
                         <p className="font-semibold text-[var(--color-text)]">{(e.absence_hours || 0).toFixed(1)}h</p>
-                        <p className="text-xs text-[var(--color-text)]/50">{absencePct}%</p>
                       </div>
                       <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Overtime</p>
                         <p className="font-semibold text-orange-400">{overtimeHours.toFixed(1)}h</p>
                       </div>
                       <div>
-                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Billed</p>
-                        <p className="font-semibold text-[var(--color-text)]">{billedPct}%</p>
+                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Unlogged</p>
+                        <p className="font-semibold text-[var(--color-text)]">{(e.unlogged_hours || 0).toFixed(1)}h</p>
                       </div>
                     </div>
                   </div>
