@@ -28,6 +28,7 @@ type MonthEntry = {
   break_hours?: number;
   absence_hours?: number;
   unlogged_hours?: number;
+  overtime_hours?: number;
 };
 
 type FiscalYear = { id: string; label: string; start_date: string; end_date: string; available_hours?: number };
@@ -159,7 +160,7 @@ export default function DashboardPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("month_entries")
-          .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours, unlogged_hours")
+          .select("id, employee_id, fiscal_year_id, month_index, worked, logged, billed, break_hours, absence_hours, unlogged_hours, overtime_hours")
           .eq("employee_id", employee.id)
           .eq("fiscal_year_id", yearId);
 
@@ -244,9 +245,10 @@ export default function DashboardPage() {
       acc.breakHours += e.break_hours || 0;
       acc.absenceHours += e.absence_hours || 0;
       acc.unloggedHours += e.unlogged_hours || 0;
+      acc.overtimeHours += e.overtime_hours || 0;
       return acc;
     },
-    { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0 }
+    { worked: 0, logged: 0, billed: 0, breakHours: 0, absenceHours: 0, unloggedHours: 0, overtimeHours: 0 }
   );
 
   const pct = {
@@ -337,7 +339,7 @@ export default function DashboardPage() {
             <p className="text-sm text-[var(--color-text)]/60 font-medium mt-1">Total hours and percentages for {years.find(y => y.id === yearId)?.label}</p>
             <div className="h-1 w-12 bg-gradient-to-r from-[var(--color-primary)] to-[var(--color-primary)]/50 rounded-full mt-2" />
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 lg:gap-5">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4 lg:gap-5">
             <div className="group relative">
               <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-[var(--color-primary)]/30 flex flex-col h-full">
@@ -437,6 +439,21 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
+
+            <div className="group relative">
+              <div className="absolute inset-0 bg-gradient-to-r from-orange-500/10 to-orange-500/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+              <div className="relative backdrop-blur-sm bg-[var(--color-surface)]/40 border border-[var(--color-surface)]/60 shadow-xl hover:shadow-2xl transition-all duration-300 rounded-2xl p-5 space-y-3 group-hover:border-orange-500/30 flex flex-col h-full">
+                <div className="inline-flex items-center justify-center w-10 h-10 rounded-full bg-orange-500/10">
+                  <span className="text-base">⏱️</span>
+                </div>
+                <h3 className="text-xs font-semibold text-[var(--color-text)]/80">Overtime</h3>
+                <div className="flex-1 flex flex-col justify-center">
+                  <div className="text-2xl font-bold text-orange-400">
+                    {totals.overtimeHours.toFixed(1)}h
+                  </div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -456,12 +473,14 @@ export default function DashboardPage() {
                 billed: 0,
                 break_hours: 0,
                 absence_hours: 0,
+                overtime_hours: 0,
               };
               const availHours = monthlyHours[m.index] ?? 160;
               const workedPct = availHours ? Math.round((e.worked / availHours) * 1000) / 10 : 0;
               const breakPct = availHours ? Math.round(((e.break_hours || 0) / availHours) * 1000) / 10 : 0;
               const absencePct = availHours ? Math.round(((e.absence_hours || 0) / availHours) * 1000) / 10 : 0;
               const billedPct = e.worked ? Math.round((e.billed / e.worked) * 1000) / 10 : 0;
+              const overtimeHours = e.overtime_hours || 0;
               return (
                 <div key={m.index} className="group relative">
                   <div className="absolute inset-0 bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 rounded-2xl blur-xl opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
@@ -470,7 +489,7 @@ export default function DashboardPage() {
                       <p className="font-semibold text-[var(--color-text)]">{m.label}</p>
                       <p className="text-xs text-[var(--color-text)]/60 font-medium">Avail: {availHours}h</p>
                     </div>
-                    <div className="grid grid-cols-4 gap-2 text-sm">
+                    <div className="grid grid-cols-5 gap-2 text-sm">
                       <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Worked</p>
                         <p className="font-semibold text-[var(--color-text)]">{(e.worked || 0).toFixed(1)}h</p>
@@ -485,6 +504,10 @@ export default function DashboardPage() {
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Absence</p>
                         <p className="font-semibold text-[var(--color-text)]">{(e.absence_hours || 0).toFixed(1)}h</p>
                         <p className="text-xs text-[var(--color-text)]/50">{absencePct}%</p>
+                      </div>
+                      <div>
+                        <p className="text-[var(--color-text)]/60 text-xs font-medium">Overtime</p>
+                        <p className="font-semibold text-orange-400">{overtimeHours.toFixed(1)}h</p>
                       </div>
                       <div>
                         <p className="text-[var(--color-text)]/60 text-xs font-medium">Billed</p>
