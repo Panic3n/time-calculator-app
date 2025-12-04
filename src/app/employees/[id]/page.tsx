@@ -529,14 +529,15 @@ export default function EmployeeDetailPage() {
                 billed: 0,
                 break_hours: 0,
                 absence_hours: 0,
+                unlogged_hours: 0,
                 overtime_hours: 0,
               };
               const availHours = monthlyHours[m.index] ?? 160;
               const workedPct = availHours ? Math.round((e.worked / availHours) * 1000) / 10 : 0;
-              const breakPct = availHours ? Math.round(((e.break_hours || 0) / availHours) * 1000) / 10 : 0;
-              const absencePct = availHours ? Math.round(((e.absence_hours || 0) / availHours) * 1000) / 10 : 0;
               const loggedPct = e.worked ? Math.round((e.logged / e.worked) * 1000) / 10 : 0;
               const billedPct = e.worked ? Math.round((e.billed / e.worked) * 1000) / 10 : 0;
+              const unloggedHours = e.unlogged_hours || 0;
+              const unloggedPct = e.worked ? Math.round((unloggedHours / e.worked) * 1000) / 10 : 0;
               const overtimeHours = e.overtime_hours || 0;
               return (
                 <div key={m.index} className="rounded-lg border border-slate-200 bg-white p-4 space-y-2">
@@ -544,27 +545,38 @@ export default function EmployeeDetailPage() {
                     <p className="font-medium text-black">{m.label}</p>
                     <p className="text-xs text-slate-500">Avail: {availHours}h</p>
                   </div>
-                  {/* Monthly metrics summary */}
-                  <div className="grid grid-cols-5 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
+                  {/* Monthly metrics summary - main row */}
+                  <div className="grid grid-cols-3 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
                     <div className="text-center">
                       <p className="font-medium">{e.worked.toFixed(1)}h</p>
                       <p className="text-slate-400">Worked ({workedPct}%)</p>
                     </div>
                     <div className="text-center">
+                      <p className="font-medium">{(e.logged || 0).toFixed(1)}h</p>
+                      <p className="text-slate-400">Logged ({loggedPct}%)</p>
+                    </div>
+                    <div className="text-center">
+                      <p className="font-medium">{(e.billed || 0).toFixed(1)}h</p>
+                      <p className="text-slate-400">Billed ({billedPct}%)</p>
+                    </div>
+                  </div>
+                  {/* Secondary metrics row */}
+                  <div className="grid grid-cols-4 gap-1 text-xs text-slate-600 bg-slate-50 rounded p-2">
+                    <div className="text-center">
                       <p className="font-medium">{(e.break_hours || 0).toFixed(1)}h</p>
-                      <p className="text-slate-400">Breaks ({breakPct}%)</p>
+                      <p className="text-slate-400">Breaks</p>
                     </div>
                     <div className="text-center">
                       <p className="font-medium">{(e.absence_hours || 0).toFixed(1)}h</p>
-                      <p className="text-slate-400">Absence ({absencePct}%)</p>
+                      <p className="text-slate-400">Absence</p>
                     </div>
                     <div className="text-center">
                       <p className="font-medium text-orange-500">{overtimeHours.toFixed(1)}h</p>
                       <p className="text-slate-400">Overtime</p>
                     </div>
                     <div className="text-center">
-                      <p className="font-medium">{billedPct}%</p>
-                      <p className="text-slate-400">Billed</p>
+                      <p className="font-medium">{unloggedHours.toFixed(1)}h</p>
+                      <p className="text-slate-400">Unlogged ({unloggedPct}%)</p>
                     </div>
                   </div>
                   <div className="grid grid-cols-3 gap-2 items-end">
