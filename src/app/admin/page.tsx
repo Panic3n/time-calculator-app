@@ -11,7 +11,7 @@ import { Separator } from "@/components/ui/separator";
 // Types
 type Employee = { id: string; name: string; role: string | null };
 type FiscalYear = { id: string; label: string; start_date?: string; end_date?: string; available_hours?: number | null };
-type Budget = { id?: string; fiscal_year_id: string; department: string; teckningsbidrag: number };
+type Budget = { id?: string; fiscal_year_id: string; department: string; teckningsbidrag: number; current_time_tb: number };
 type TeamGoals = {
   id?: string;
   fiscal_year_id: string;
@@ -574,13 +574,13 @@ export default function AdminPage() {
         setBudgetError(null);
         const { data: budgets, error: bErr } = await supabaseBrowser
           .from("it_budgets")
-          .select("id, fiscal_year_id, department, teckningsbidrag")
+          .select("id, fiscal_year_id, department, teckningsbidrag, current_time_tb")
           .eq("fiscal_year_id", budgetYearId)
           .eq("department", "IT")
           .limit(1);
         if (bErr) throw bErr;
         const b = (budgets || [])[0] as any;
-        setBudget(b ?? { fiscal_year_id: budgetYearId, department: "IT", teckningsbidrag: 0 });
+        setBudget(b ?? { fiscal_year_id: budgetYearId, department: "IT", teckningsbidrag: 0, current_time_tb: 0 });
       } catch (e: any) {
         setBudgetError(e?.message || "Failed to load budget data");
       } finally {
@@ -788,11 +788,12 @@ export default function AdminPage() {
         fiscal_year_id: budgetYearId,
         department: "IT",
         teckningsbidrag: Number(budget.teckningsbidrag || 0),
+        current_time_tb: Number(budget.current_time_tb || 0),
       } as any;
       const { data, error } = await supabaseBrowser
         .from("it_budgets")
         .upsert(payload, { onConflict: "fiscal_year_id,department" })
-        .select("id, fiscal_year_id, department, teckningsbidrag")
+        .select("id, fiscal_year_id, department, teckningsbidrag, current_time_tb")
         .single();
       if (error) throw error;
       setBudget(data as any);
@@ -1295,9 +1296,9 @@ export default function AdminPage() {
                     <p className="text-sm text-red-600">{budgetError}</p>
                   ) : (
                     <>
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 items-end">
                         <div>
-                          <label className="text-sm block mb-1">Teckningsbidrag (SEK)</label>
+                          <label className="text-sm block mb-1">Teckningsbidrag (SEK) - Full Year Goal</label>
                           <Input
                             inputMode="decimal"
                             value={String(budget?.teckningsbidrag ?? 0)}
@@ -1310,6 +1311,21 @@ export default function AdminPage() {
                           />
                         </div>
                         <div>
+                          <label className="text-sm block mb-1">Current Time TB (SEK) - Used for Avg Rate calc</label>
+                          <Input
+                            inputMode="decimal"
+                            value={String(budget?.current_time_tb ?? 0)}
+                            onChange={(e) =>
+                              setBudget((b) => ({
+                                ...(b as Budget),
+                                current_time_tb: Number((e.target.value || "0").replace(",", ".")),
+                              }))
+                            }
+                          />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                        <div>
                           <label className="text-sm block mb-1">
                             Total billed hours (selected employees, {years.find((y) => y.id === budgetBilledYearId)?.label || ""})
                           </label>
@@ -1318,6 +1334,13 @@ export default function AdminPage() {
                         <div>
                           <label className="text-sm block mb-1">Avg billed hourly rate (SEK/h)</label>
                           <Input value={budgetAvgBilledRate.toFixed(2)} readOnly />
+                        </div>
+                        <div>
+                          <label className="text-sm block mb-1">Current Avg Rate (Current TB / Billed)</label>
+                          <Input 
+                            value={budgetBilledHours > 0 ? ((budget?.current_time_tb || 0) / budgetBilledHours).toFixed(2) : "0"} 
+                            readOnly 
+                          />
                         </div>
                       </div>
 

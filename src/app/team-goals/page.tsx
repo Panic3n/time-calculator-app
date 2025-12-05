@@ -249,17 +249,18 @@ export default function TeamGoalsPage() {
       try {
         const { data, error } = await supabaseBrowser
           .from("it_budgets")
-          .select("teckningsbidrag")
+          .select("current_time_tb")
           .eq("fiscal_year_id", yearId)
           .eq("department", "IT")
           .limit(1);
         if (error) throw error;
-        const tb = Number(((data as any[])?.[0]?.teckningsbidrag) || 0);
+        // Use current_time_tb for Avg Hourly Rate calculation
+        const currentTB = Number(((data as any[])?.[0]?.current_time_tb) || 0);
         const hrs = Number(teamTotals.billed || 0);
         if (!hrs) {
           setAvgRate(0);
         } else {
-          setAvgRate(Math.round((tb / hrs) * 100) / 100);
+          setAvgRate(Math.round((currentTB / hrs) * 100) / 100);
         }
       } catch {
         setAvgRate(0);
